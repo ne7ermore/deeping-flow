@@ -12,7 +12,7 @@ Basics which are basic nns like Logistic, CNN, RNN, LSTM are implemented with fe
 ## Tabel of TensorFlow Examples
 
 #### 1. Basics
-* [Lstm Cnn Classfication](https://github.com/ne7ermore/deeping-flow/tree/master/lstm-cnn-classfication)
+* [LSTM CNN Classfication](https://github.com/ne7ermore/deeping-flow/tree/master/lstm-cnn-classfication)
 
 #### 2. Advanced
 * [SeqMatchSeq](https://github.com/ne7ermore/deeping-flow/tree/master/SeqMatchSeq)
