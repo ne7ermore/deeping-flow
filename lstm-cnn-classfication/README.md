@@ -11,7 +11,7 @@ Perform experiments on the English data from [TREC](http://cogcomp.org/Data/QA/Q
 ## Result
 
 > Acc: 88.0%
-<p align="center"><img width="40%" src="result.png" /></p>
+<p align="center"><img width="100%" src="result.png" /></p>
 
 ## Usage
 ```
