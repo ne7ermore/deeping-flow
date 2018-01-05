@@ -3,9 +3,12 @@ import argparse
 parser = argparse.ArgumentParser(description='LSTM CNN Classification')
 
 parser.add_argument('--device', type=str, default='/gpu:0')
+parser.add_argument('--logdir', type=str, default='logdir')
 parser.add_argument('--epochs', type=int, default=40)
 parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--seed', type=int, default=1111)
+parser.add_argument('--u_scope', type=float, default=.1)
+parser.add_argument('--debug', action='store_true')
 parser.add_argument('--data', type=str, default='./data/corpus')
 parser.add_argument('--lr', type=float, default=0.0005)
 parser.add_argument('--dropout', type=float, default=0.5)
@@ -48,75 +51,60 @@ validation_data = DataLoader(
 # ##############################################################################
 # Training
 # ##############################################################################
+import os
+
 import tensorflow as tf
+from tensorflow.python import debug as tf_debug
 from tqdm import tqdm
 import numpy as np
 
 from model import Model
 
-with tf.device(args.device), tf.Graph().as_default():
-     tf.set_random_seed(args.seed)
-     config = tf.ConfigProto()
-     config.gpu_options.allow_growth = True     
-     sess = tf.Session(config=config)
-     with sess.as_default():
-          model = Model(args)
-          global_step = tf.Variable(0, name="global_step", trainable=False)
-          optimizer = tf.train.AdamOptimizer(args.lr)
-          grads_and_vars = optimizer.compute_gradients(model.loss)
-          train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
-          sess.run(tf.global_variables_initializer())
+tf.set_random_seed(args.seed)
 
-     def train_step(data, label):
-          feed_dict = {
-               model.input: data,
-               model.label: label,
-               model.dropout: args.dropout
-          }
+train_log = os.path.join(args.logdir, "train")
+if not os.path.exists(train_log): 
+    os.makedirs(train_log)
 
-          _, step, loss, cor = sess.run([train_op, global_step, model.loss, model.corrects], feed_dict)
-          return loss, cor
+model = Model(args)
 
-     def eval_step(data, label):
-          feed_dict = {
-               model.input: data,
-               model.label: label,
-               model.dropout: 1.
-          }
-          step, loss, cor = sess.run([global_step, model.loss, model.corrects], feed_dict)
-          return loss, cor     
+init = tf.global_variables_initializer()
+saver = tf.train.Saver()
 
-     train_losses, train_accs, eval_losses, eval_accs = [], [], [], []
-     print('-' * 90)
-     for epoch in range(1, args.epochs+1):
-          losses = corrects = 0.
-          for data, label in tqdm(training_data, mininterval=1, desc='Train Processing', leave=False):
-               loss, cor = train_step(data, label)
-               losses += loss
-               corrects += cor
-               current_step = tf.train.global_step(sess, global_step)
+sv = tf.train.Supervisor(logdir=train_log,
+                         saver=saver,
+                         global_step=model.global_step,
+                         summary_op=None)
+
+summary_writer = sv.summary_writer
+
+try:
+    with sv.managed_session() as sess:
+        if args.debug:
+            sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+            sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
+
+        print('-' * 90)       
+        for epoch in range(1, args.epochs+1):
+            if sv.should_stop(): break
+            for batch in tqdm(training_data, mininterval=1, desc='Train Processing', leave=False):
+                merged, step = model.train_step(batch, sess)
+                summary_writer.add_summary(merged, step)
+
+                if step % 1000 == 0:
+                    summary_writer.flush()
+
+            corrects = losses = 0
+            for batch in validation_data:
+                loss, cor = model.eval_step(batch, sess)
+                losses += loss
+                corrects += cor
                
-          train_loss = losses/training_data.stop_step
-          train_acc = corrects/training_data.sents_size
-          train_losses.append(train_loss)
-          train_accs.append(train_acc)
-          print("start of epoch - {} | loss - {} | acc - {}".format(epoch, train_loss, train_acc))
-          print('-' * 90)
+            eval_loss = losses/validation_data.stop_step
+            eval_acc = corrects/validation_data.sents_size
+            print("epoch - {} | loss - {:.5f} | acc - {}".format(epoch, eval_loss, eval_acc))
+            print('-' * 90)                
 
-          losses = corrects = 0.
-          for data, label in validation_data:
-               loss, cor = eval_step(data, label)
-               losses += loss
-               corrects += cor
-               
-          eval_loss = losses/validation_data.stop_step
-          eval_acc = corrects/validation_data.sents_size
-          eval_losses.append(eval_loss)
-          eval_accs.append(eval_acc)
-          print("end of epoch - {} | loss - {} | acc - {}".format(epoch, eval_loss, eval_acc))
-          print('-' * 90)
+except KeyboardInterrupt:
+    sv.stop()
 
-     print(train_losses)
-     print(train_accs)
-     print(eval_losses)
-     print(eval_accs)

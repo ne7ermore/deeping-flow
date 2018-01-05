@@ -1,4 +1,7 @@
+from collections import namedtuple
+
 import numpy as np
+
 import const
 
 def data_pad(sents, max_len):
@@ -24,6 +27,7 @@ class DataLoader(object):
         self.label_size = label_size
         self._src_sents = np.asarray(src_sents)
         self._label = np.asarray(label)
+        self.nt = namedtuple('dataloader', ['data', 'label'])
         if shuffle:
             self._shuffle()
 
@@ -48,7 +52,7 @@ class DataLoader(object):
         data = data_pad(self._src_sents[_start:_start+_bsz], self._max_len)
         label = label_pad(self._label[_start:_start+_bsz], self.label_size)
 
-        return data, label
+        return self.nt._make([data, label])
 
 if __name__ == '__main__':
     from corpus import middle_load
@@ -61,8 +65,8 @@ if __name__ == '__main__':
     training_data = DataLoader(
              data['train']['src'], data['train']['label'], 16, 6, 8)    
 
-    data, label = next(training_data)
+    dt = next(training_data)
 
-    for d, l in zip(data, label):
-        print([i2w[i] for i in d])
-        print(l)
+    print(dt.data)
+    print(dt.label)
+
