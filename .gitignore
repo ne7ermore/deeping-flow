@@ -7,4 +7,4 @@ sftp-config.json
 test.py
 *ignore.py
 example
-deep-reinforced-sum-model
+deep-reinforced-sum-model/data
