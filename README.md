@@ -16,6 +16,7 @@ Basics which are basic nns like Logistic, CNN, RNN, LSTM are implemented with fe
 
 #### 2. Advanced
 * [SeqMatchSeq](https://github.com/ne7ermore/deeping-flow/tree/master/SeqMatchSeq)
+* [Summarization](https://github.com/ne7ermore/deeping-flow/tree/master/deep-reinforced-sum-model)
 
 
 ## Getting Started
