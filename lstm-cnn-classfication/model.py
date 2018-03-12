@@ -7,17 +7,17 @@ class Model(object):
         self.global_step = tf.Variable(0, name="global_step", trainable=False)
 
         #euclidean
-        self.l2_loss = tf.constant(0.)  
+        self.l2_loss = tf.constant(0.)
 
         self.uniform_init = tf.random_uniform_initializer(
-                    -args.u_scope, args.u_scope, seed=args.seed)  
+                    -args.u_scope, args.u_scope, seed=args.seed)
 
         self.init_placeholders()
-        self.init_graph()    
+        self.init_graph()
 
         optimizer = tf.train.AdamOptimizer(
-                args.lr, beta1=0.9, beta2=0.98, epsilon=1e-8)     
-        self.train_op = optimizer.minimize(self.loss, global_step=self.global_step)                   
+                args.lr, beta1=0.9, beta2=0.98, epsilon=1e-8)
+        self.train_op = optimizer.minimize(self.loss, global_step=self.global_step)
 
     def init_placeholders(self):
         args = self.args
@@ -44,12 +44,12 @@ class Model(object):
                                         output_keep_prob=self.dropout)
 
             hidden = rnn_cells.zero_state(args.batch_size, dtype=tf.float32)
-            
+
             lstm_encode, _ = tf.nn.dynamic_rnn(
                                     cell=rnn_cells,
                                     inputs=emb_encode,
                                     initial_state=hidden,
-                                    dtype=tf.float32)        
+                                    dtype=tf.float32)
         last_hsz = args.hidden_sizes[-1]
         lstm_encode = tf.expand_dims(lstm_encode, -1)
 
@@ -58,14 +58,14 @@ class Model(object):
         for i, filter_size in enumerate(args.filter_sizes):
             filter_shape = [filter_size, last_hsz, 1, args.num_filters]
             with tf.name_scope('cnn_{}'.format(i)):
-                w = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")     
+                w = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="W")
                 b = tf.Variable(tf.constant(0., shape=[args.num_filters]), name="b")
                 cnn_encode = tf.nn.conv2d(
                     lstm_encode, w,
                     strides=[1, 1, 1, 1],
                     padding='VALID',
                     name='cnn')
-                
+
                 cnn_encode = tf.nn.relu(tf.nn.bias_add(cnn_encode, b), name='relu')
                 pool = tf.nn.max_pool(
                     cnn_encode,
@@ -92,7 +92,7 @@ class Model(object):
             self.predictions = tf.argmax(scores, 1, name='predictions')
 
         with tf.name_scope('loss'):
-            losses = tf.nn.softmax_cross_entropy_with_logits(
+            losses = tf.nn.softmax_cross_entropy_with_logits_v2(
                                 logits=scores, labels=self.label)
             self.loss = tf.reduce_mean(losses) + args.l_2 * self.l2_loss
             tf.summary.scalar('loss', self.loss)
@@ -102,9 +102,9 @@ class Model(object):
                     self.predictions, tf.argmax(self.label, 1))
             self.corrects = tf.reduce_sum(
                     tf.cast(corrects, "float"), name="corrects")
-            tf.summary.scalar('corrects', self.corrects)    
+            tf.summary.scalar('corrects', self.corrects)
 
-        self.merged = tf.summary.merge_all() 
+        self.merged = tf.summary.merge_all()
 
     def train_step(self, batch, sess):
         feed_dict = {
@@ -116,7 +116,7 @@ class Model(object):
         _, step, loss, corrects, merged = sess.run([self.train_op,
                 self.global_step, self.loss, self.corrects, self.merged], feed_dict)
 
-        return merged, step        
+        return merged, step
 
     def eval_step(self, batch, sess):
         feed_dict = {
@@ -125,4 +125,4 @@ class Model(object):
            self.dropout: 1.
         }
         _, loss, corrects = sess.run([self.global_step, self.loss, self.corrects], feed_dict)
-        return loss, corrects             
+        return loss, corrects

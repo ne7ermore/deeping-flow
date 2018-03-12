@@ -63,7 +63,7 @@ from model import Model
 tf.set_random_seed(args.seed)
 
 train_log = os.path.join(args.logdir, "train")
-if not os.path.exists(train_log): 
+if not os.path.exists(train_log):
     os.makedirs(train_log)
 
 model = Model(args)
@@ -77,14 +77,17 @@ sv = tf.train.Supervisor(logdir=train_log,
                          summary_op=None)
 
 summary_writer = sv.summary_writer
+tf.set_random_seed(args.seed)
+config = tf.ConfigProto()
+config.gpu_options.allow_growth = True
 
 try:
-    with sv.managed_session() as sess:
+    with sv.managed_session(config=config) as sess:
         if args.debug:
             sess = tf_debug.LocalCLIDebugWrapperSession(sess)
             sess.add_tensor_filter("has_inf_or_nan", tf_debug.has_inf_or_nan)
 
-        print('-' * 90)       
+        print('-' * 90)
         for epoch in range(1, args.epochs+1):
             if sv.should_stop(): break
             for batch in tqdm(training_data, mininterval=1, desc='Train Processing', leave=False):
@@ -99,11 +102,11 @@ try:
                 loss, cor = model.eval_step(batch, sess)
                 losses += loss
                 corrects += cor
-               
+
             eval_loss = losses/validation_data.stop_step
             eval_acc = corrects/validation_data.sents_size
             print("epoch - {} | loss - {:.5f} | acc - {}".format(epoch, eval_loss, eval_acc))
-            print('-' * 90)                
+            print('-' * 90)
 
 except KeyboardInterrupt:
     sv.stop()

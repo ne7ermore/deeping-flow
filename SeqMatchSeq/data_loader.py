@@ -48,7 +48,7 @@ class DataLoader(object):
 
 if __name__ == "__main__":
     from utils import middle_load
-    data = middle_load("./data/dssm_middle")
+    data = middle_load("./data/corpus")
     training_data = DataLoader(
                  data['train']['src'],
                  data['train']['tgt'],
@@ -56,8 +56,13 @@ if __name__ == "__main__":
                  data["max_lenth_src"],
                  batch_size=8)
 
+    id2word = {v: k for k, v in data["dict"]["src"].items()}
     q, d, label = next(training_data)
-    print(label.dtype)
+    print(label)
     print(q)
-    print(d)
+    for doc in q:
+        print([id2word[w] for w in doc])
+    print("="*30)
+    for doc in d:
+        print([id2word[w] for w in doc])
 

@@ -22,7 +22,7 @@ def label_pad(labels, max_len, size):
     return np.asarray(list(pad_labels), dtype=np.float32), label_ids
 
 class DataLoader(object):
-    def __init__(self, datas, labels, d_max_len, l_max_len, v_size, batch_size=64, shuffle=True):
+    def __init__(self, datas, labels, d_max_len, l_max_len, tgt_vs, batch_size=64, shuffle=True):
         self.data_size = len(datas)
         self._step = 0
         self.stop_step = self.data_size // batch_size
@@ -30,7 +30,7 @@ class DataLoader(object):
         self._batch_size = batch_size
         self._d_max_len = d_max_len
         self._l_max_len = l_max_len
-        self._v_size = v_size
+        self._tgt_vs = tgt_vs
         self._datas = np.asarray(datas)
         self._label = np.asarray(labels)
         self.nt = namedtuple('dataloader', ['data', 'label', 'label_ids'])
@@ -56,7 +56,7 @@ class DataLoader(object):
 
         self._step += 1
         data = data_pad(self._datas[_start:_start+_bsz], self._d_max_len)
-        label, label_ids = label_pad(self._label[_start:_start+_bsz], self._l_max_len, self._v_size)
+        label, label_ids = label_pad(self._label[_start:_start+_bsz], self._l_max_len, self._tgt_vs)
 
         return self.nt._make([data, label, label_ids])
 
@@ -64,11 +64,11 @@ if __name__ == '__main__':
     from corpus import middle_load
 
     data = middle_load('./data/corpus')
+
     i2w = {v: k for k, v in data['dict']['src'].items()}
     training_data = DataLoader(
-             data['train']['data'], data['train']['label'], data['max_w_len'], data['max_l_len'], data['dict']['src_size'], 2)    
+             data['train']['data'], data['train']['label'], data['max_w_len'], data['max_l_len'], data['dict']['src_size'], 100)
+    print(training_data.data_size)
+    for batch in training_data:
+        print("")
 
-    dt = next(training_data)
-    print(dt.data)
-    print(dt.label)
-    print(dt.label_ids)

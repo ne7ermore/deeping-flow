@@ -1,11 +1,6 @@
-import os
-import sys
-_root = os.path.normpath("%s/.." % os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(_root)
-
-from common.utils import *
 import const
 import pickle
+import re
 
 import numpy as np
 from const import *
@@ -45,6 +40,12 @@ def load_pre_w2c(file_, dict_):
             emb_mx[idx] = np.asarray(w2c_dict[word])
 
     return emb_mx
+
+def normalizeString(s):
+    s = s.lower().strip()
+    s = re.sub(r"([.!?])", r" \1", s)
+    s = re.sub(r"[^a-zA-Z.!?]+", r" ", s)
+    return s
 
 if __name__ == "__main__":
     # obj = {"a": 1}

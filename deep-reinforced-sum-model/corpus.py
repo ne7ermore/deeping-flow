@@ -62,11 +62,12 @@ class Corpus(object):
         self.max_w_len = max_w_len
         self.max_l_len = max_l_len-1
         self._min_word_count = min_word_count
-        self.dict = Dictionary()
+        self.src_dict = Dictionary()
+        self.tgt_dict = Dictionary()
 
-    def parse_file(self, file_, is_label=True):
+    def parse_file(self, _file, is_label=True):
         sents, ignore_count = [], 0
-        for sentence in open(file_):
+        for sentence in open(_file):
             sentence = normalizeString(sentence)
             words = sentence.strip().split()
 
@@ -79,7 +80,7 @@ class Corpus(object):
             if not is_label:
                 if len(words) > self.max_w_len:
                     ignore_count += 1
-                    words = words[:self.max_w_len]                
+                    words = words[:self.max_w_len]
                 sents.append(words)
 
         return sents, ignore_count
@@ -93,31 +94,36 @@ class Corpus(object):
         print("Doc`s length out of {} - [{}]".format(self.max_w_len, tf_ignore))
         print("Label`s length out of {} - [{}]".format(self.max_l_len, tl_ignore))
 
-        word_ignore = self.dict(self.t_fuel+self.t_label, self._min_word_count)
+        src_word_ignore = self.src_dict(self.t_fuel, self._min_word_count)
+        tgt_word_ignore = self.tgt_dict(self.t_label, self._min_word_count)
 
-        if word_ignore != 0:
-            print("Ignored word counts - [{}]".format(word_ignore))
+        if src_word_ignore != 0: print("Ignored src word counts - [{}]".format(src_word_ignore))
+        if tgt_word_ignore != 0: print("Ignored tgt word counts - [{}]".format(tgt_word_ignore))
 
     def save(self):
         data = {
             'max_w_len': self.max_w_len,
             'max_l_len': self.max_l_len+1,
             'dict': {
-                'src': self.dict.word2idx,
-                'src_size': len(self.dict),
+                'src': self.src_dict.word2idx,
+                'src_size': len(self.src_dict),
+                'tgt': self.tgt_dict.word2idx,
+                'tgt_size': len(self.tgt_dict),
+                'id2word': {v: k for k, v in self.tgt_dict.word2idx.items()}
             },
             'train': {
-                'data': word2idx(self.t_fuel, self.dict.word2idx),
-                'label': word2idx(self.t_label, self.dict.word2idx),
+                'data': word2idx(self.t_fuel, self.src_dict.word2idx),
+                'label': word2idx(self.t_label, self.tgt_dict.word2idx),
             },
             'valid': {
-                'data': word2idx(self.v_fuel, self.dict.word2idx),
-                'label': word2idx(self.v_label, self.dict.word2idx),
-            }            
+                'data': word2idx(self.v_fuel, self.src_dict.word2idx),
+                'label': word2idx(self.v_label, self.tgt_dict.word2idx),
+            }
         }
 
         middle_save(data, self._save_data)
-        print('word length - [{}]'.format(len(self.dict)))
+        print('src word length - [{}]'.format(len(self.src_dict)))
+        print('tgt word length - [{}]'.format(len(self.tgt_dict)))
 
     def process(self):
         self.parse_files()
@@ -129,15 +135,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='drsm')
     parser.add_argument('--save_data', type=str, default='data/corpus')
     parser.add_argument('--fuel_path', type=str, default='data/')
-    parser.add_argument('--max_w_len', type=int, default=800)
-    parser.add_argument('--max_l_len', type=int, default=60)
-    parser.add_argument('--min_word_count', type=int, default=1)
+    parser.add_argument('--max_w_len', type=int, default=512)
+    parser.add_argument('--max_l_len', type=int, default=40)
+    parser.add_argument('--min_word_count', type=int, default=2)
     args = parser.parse_args()
 
     corpus = Corpus(args.fuel_path, args.save_data, args.max_w_len, args.max_l_len, args.min_word_count)
     corpus.process()
-
-    # s = '''it`s'''
-    # print(s)
-    # s = normalizeString(s)
-    # print(s)
