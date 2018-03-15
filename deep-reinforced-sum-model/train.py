@@ -1,10 +1,11 @@
 import argparse
 
-parser = argparse.ArgumentParser(description='A DEEP REINFORCED MODEL FOR ABSTRACTIVE SUMMARIZATION')
+parser = argparse.ArgumentParser(
+    description='A DEEP REINFORCED MODEL FOR ABSTRACTIVE SUMMARIZATION')
 
 parser.add_argument('--logdir', type=str, default='logdir_{}')
 parser.add_argument('--epochs', type=int, default=40)
-parser.add_argument('--batch_size', type=int, default=32)
+parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--seed', type=int, default=1111)
 parser.add_argument('--data', type=str, default='./data/corpus')
 parser.add_argument('--ml_lr', type=float, default=0.001)
@@ -30,25 +31,25 @@ args.d_max_len = data["max_w_len"]
 args.l_max_len = data["max_l_len"]
 args.src_vs = data['dict']['src_size']
 args.tgt_vs = data['dict']['tgt_size']
-args.dec_hsz = args.enc_hsz*2
+args.dec_hsz = args.enc_hsz * 2
 args.logdir = args.logdir.format(time.time())
 
 training_data = DataLoader(
-             data['train']['data'],
-             data['train']['label'],
-             data['max_w_len'],
-             data['max_l_len'],
-             data['dict']['tgt_size'],
-             batch_size=args.batch_size)
+    data['train']['data'],
+    data['train']['label'],
+    data['max_w_len'],
+    data['max_l_len'],
+    data['dict']['tgt_size'],
+    batch_size=args.batch_size)
 
 validation_data = DataLoader(
-              data['valid']['data'],
-              data['valid']['label'],
-              data['max_w_len'],
-              data['max_l_len'],
-              data['dict']['tgt_size'],
-              batch_size=args.batch_size,
-              shuffle=False)
+    data['valid']['data'],
+    data['valid']['label'],
+    data['max_w_len'],
+    data['max_l_len'],
+    data['dict']['tgt_size'],
+    batch_size=args.batch_size,
+    shuffle=False)
 
 id2word = data['dict']['id2word']
 
@@ -89,31 +90,30 @@ try:
         for batch in training_data:
             merged, step = model.ml_train_step(batch, sess)
             summary_writer.add_summary(merged, step)
-            if step % 1000 == 0:
+            if step % 100 == 0:
                 summary_writer.flush()
 
-        for epoch in range(1, args.epochs+1):
-            if sv.should_stop(): break
+        for epoch in range(1, args.epochs + 1):
+            if sv.should_stop():
+                break
             # for batch in tqdm(training_data, mininterval=1, desc='Train Processing', leave=False):
             for batch in training_data:
                 merged, step = model.mix_train_step(batch, sess)
                 summary_writer.add_summary(merged, step)
-                if step % 1000 == 0:
+                if step % 100 == 0:
                     summary_writer.flush()
 
-            loss  = 0.
+            loss = 0.
             for batch in validation_data:
                 _loss = model.eval_step(batch, sess)
                 loss += _loss
 
             loss /= validation_data.data_size
             print("epoch - {} end | loss - {}".format(epoch, loss))
-            print("="*40 + "Summarizor" + "="*40)
+            print("=" * 40 + "Summarizor" + "=" * 40)
             words = model.generate(next(validation_data), sess)
             [print(" ".join([id2word[_id] for _id in ws])) for ws in words]
             print('-' * 90)
 
 except KeyboardInterrupt:
     sv.stop()
-
-
