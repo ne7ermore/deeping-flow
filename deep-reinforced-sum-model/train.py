@@ -9,7 +9,7 @@ parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--seed', type=int, default=1111)
 parser.add_argument('--data', type=str, default='./data/corpus')
 parser.add_argument('--ml_lr', type=float, default=0.001)
-parser.add_argument('--mix_lr', type=float, default=0.0001)
+parser.add_argument('--lr', type=float, default=0.0001)
 parser.add_argument('--dropout', type=float, default=0.5)
 parser.add_argument('--emb_dim', type=int, default=64)
 parser.add_argument('--enc_hsz', type=int, default=64)
@@ -87,12 +87,6 @@ config.gpu_options.allow_growth = True
 
 try:
     with sv.managed_session(config=config) as sess:
-        for batch in training_data:
-            merged, step = model.ml_train_step(batch, sess)
-            summary_writer.add_summary(merged, step)
-            if step % 100 == 0:
-                summary_writer.flush()
-
         for epoch in range(1, args.epochs + 1):
             if sv.should_stop():
                 break

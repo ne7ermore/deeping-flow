@@ -33,29 +33,17 @@ class Summarizor(object):
         self.uniform_init = tf.random_uniform_initializer(
             -std, std, seed=args.seed)
 
-        # for props sampling
-        self.prev = tf.expand_dims(tf.constant(
-            np.arange(batch_size, dtype=np.int64)), -1)
+        self.ml_optimizer = tf.train.AdamOptimizer(
+            self.args.ml_lr, beta1=0.9, beta2=0.98, epsilon=1e-8)
+        self.optimizer = tf.train.AdamOptimizer(
+            self.args.lr, beta1=0.9, beta2=0.98, epsilon=1e-8)
+
+        self.variables = tf.get_collection(
+            tf.GraphKeys.TRAINABLE_VARIABLES, scope="vars")
 
         self.init_placeholders()
         self.init_vars()
         self.build()
-
-        ml_optimizer = tf.train.AdamOptimizer(
-            self.args.ml_lr, beta1=0.9, beta2=0.98, epsilon=1e-8)
-        ml_gvs = ml_optimizer.compute_gradients(self.ml_loss)
-        ml_capped_gvs = [(tf.clip_by_value(grad,
-                                           -args.clip_norm, args.clip_norm), var) for grad, var in ml_gvs if grad is not None]
-        self.ml_train_op = ml_optimizer.apply_gradients(
-            ml_capped_gvs, global_step=self.global_step)
-
-        mix_optimizer = tf.train.AdamOptimizer(
-            self.args.mix_lr, beta1=0.9, beta2=0.98, epsilon=1e-8)
-        mix_gvs = mix_optimizer.compute_gradients(self.mix_loss)
-        mix_capped_gvs = [(tf.clip_by_value(grad,
-                                            -args.clip_norm, args.clip_norm), var) for grad, var in mix_gvs if grad is not None]
-        self.mix_train_op = mix_optimizer.apply_gradients(
-            mix_capped_gvs, global_step=self.global_step)
 
     def init_placeholders(self):
         args = self.args
@@ -118,25 +106,43 @@ class Summarizor(object):
 
         with tf.variable_scope('decode'):
             ml_props = self._teacher_forcing()
+            rl_props, s_words = self._sample(False)
+            b_words = self._sample(True)
 
         with tf.variable_scope('loss'):
             ml_loss = tf.nn.softmax_cross_entropy_with_logits(
                 logits=ml_props, labels=self.label)
-            s_props, s_words = self._sample(False)
-            b_words = self._sample(True)
-            rl_loss, reward, bl_reward, p_reward = self._reinforced(
-                s_words, b_words, s_props)
+            ml_loss = tf.reduce_mean(ml_loss)
 
-            self.ml_loss = tf.reduce_mean(ml_loss)
-            self.mix_loss = args.gamma * rl_loss + \
-                (1. - args.gamma) * self.ml_loss
+            rl_loss = tf.nn.softmax_cross_entropy_with_logits(
+                logits=rl_props, labels=self.label)
+            rl_loss = tf.reduce_mean(rl_loss)
 
-            tf.summary.scalar('p_reward', tf.reduce_mean(p_reward))
-            tf.summary.scalar('bl_reward', tf.reduce_mean(bl_reward))
-            tf.summary.scalar('reward', reward)
-            tf.summary.scalar('ml_loss', tf.reduce_mean(ml_loss))
-            tf.summary.scalar('rl_loss', tf.reduce_mean(rl_loss))
+            self.mix_loss = args.gamma * rl_loss + (1. - args.gamma) * ml_loss
+
+            p_reward, bl_reward = self._reward(s_words, b_words)
+            reward = p_reward - bl_reward
+            self.gradients = self.optimizer.compute_gradients(
+                self.mix_loss)
+            for i, (grad, var) in enumerate(self.gradients):
+                if grad is not None:
+                    self.gradients[i] = (tf.clip_by_norm(
+                        grad * reward, args.clip_norm), var)
+
+            for grad, var in self.gradients:
+                tf.summary.histogram(var.name, var)
+                if grad is not None:
+                    tf.summary.histogram(var.name + '/gradients', grad)
+
+            tf.summary.scalar("p_reward", p_reward)
+            tf.summary.scalar("bl_reward", bl_reward)
+            tf.summary.scalar("reward", reward)
+            tf.summary.scalar('ml_loss', ml_loss)
+            tf.summary.scalar('rl_loss', rl_loss)
             tf.summary.scalar('mix_loss', self.mix_loss)
+
+        self.train_op = self.optimizer.apply_gradients(
+            self.gradients, global_step=self.global_step)
 
         self.words = s_words
         self.merged = tf.summary.merge_all()
@@ -150,7 +156,7 @@ class Summarizor(object):
         }
 
         _, step, merged = sess.run([
-            self.ml_train_op, self.global_step, self.merged], feed_dict)
+            self.train_op, self.global_step, self.merged], feed_dict)
 
         return merged, step
 
@@ -163,7 +169,7 @@ class Summarizor(object):
         }
 
         _, step, merged = sess.run([
-            self.mix_train_op, self.global_step, self.merged], feed_dict)
+            self.train_op, self.global_step, self.merged], feed_dict)
 
         return merged, step
 
@@ -239,7 +245,6 @@ class Summarizor(object):
 
             if args.dropout != 1.:
                 dec_out = tf.nn.dropout(dec_out, args.dropout)
-                dec_state = tf.nn.dropout(dec_state, args.dropout)
 
             dec_hidden = dec_state.h
 
@@ -271,7 +276,7 @@ class Summarizor(object):
         word = tf.constant(BOS, shape=[self.batch_size, 1], dtype=tf.int64)
         tgt_emb = tf.nn.embedding_lookup(self.tgt_emb_matrix, word)
 
-        s_props, words = [], []
+        outputs, words = [], []
         args, pre_enc_hiddens = self.args, []
 
         dec_state = self.encode_states
@@ -285,7 +290,6 @@ class Summarizor(object):
 
             if args.dropout != 1.:
                 dec_out = tf.nn.dropout(dec_out, args.dropout)
-                dec_state = tf.nn.dropout(dec_state, args.dropout)
 
             dec_hidden = dec_state.h
 
@@ -307,38 +311,21 @@ class Summarizor(object):
 
             if max_props:
                 word = tf.expand_dims(tf.argmax(props, -1), -1)
-                words.append(word)
-
             else:
                 word = tf.multinomial(tf.exp(props), 1)
-                s_prop = tf.expand_dims(tf.gather_nd(
-                    props, tf.concat((self.prev, word), -1)), -1)
 
-                s_props.append(s_prop)
-                words.append(word)
-
+            words.append(word)
             tgt_emb = tf.nn.embedding_lookup(self.tgt_emb_matrix, word)
+
+            outputs.append(tf.expand_dims(props, 1))
 
         if max_props:
             return tf.concat(words, 1)
-
         else:
-            return tf.concat(s_props, 1), tf.concat(words, 1)
+            return tf.concat(outputs, 1), tf.concat(words, 1)
 
-    def _reinforced(self, s_words, b_words, s_props):
-        def mask_score(words, scores):
-            pad = tf.zeros([args.batch_size, args.l_max_len], dtype=tf.int64)
-            mask = tf.cast(tf.greater(words, pad), dtype=tf.float32)
-
-            return tf.multiply(scores, mask), mask
-
-        args = self.args
-
+    def _reward(self, s_words, b_words):
         bl_reward = tf.py_func(rouge_l, [b_words, self.label_ids], tf.float32)
         p_reward = tf.py_func(rouge_l, [s_words, self.label_ids], tf.float32)
 
-        masked_score, mask = mask_score(s_words, bl_reward - p_reward)
-        rl_loss = tf.reduce_sum(s_props * masked_score) / tf.reduce_sum(mask)
-        reward = tf.reduce_sum(masked_score) / tf.reduce_sum(mask)
-
-        return rl_loss, reward, bl_reward, p_reward
+        return tf.reduce_mean(p_reward), tf.reduce_mean(bl_reward)
