@@ -15,6 +15,7 @@ Basics which are basic nns like Logistic, CNN, RNN, LSTM are implemented with fe
 * [LSTM CNN Classfication](https://github.com/ne7ermore/deeping-flow/tree/master/lstm-cnn-classfication)
 
 #### 2. Advanced
+* [Self-Critic Translate](https://github.com/ne7ermore/deeping-flow/tree/master/reinforced-translate)
 * [SeqMatchSeq](https://github.com/ne7ermore/deeping-flow/tree/master/SeqMatchSeq)
 * [Summarization](https://github.com/ne7ermore/deeping-flow/tree/master/deep-reinforced-sum-model)
 
