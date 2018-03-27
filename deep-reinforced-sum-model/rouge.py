@@ -41,6 +41,7 @@ def rouge_l(evals, refs):
         scores.append(f_lcs)
 
     scores = np.asarray(scores, dtype=np.float32)
+    scores = np.repeat(scores[:, np.newaxis], evals.shape[1], 1)
 
     return scores
 

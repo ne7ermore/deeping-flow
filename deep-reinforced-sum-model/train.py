@@ -3,16 +3,16 @@ import argparse
 parser = argparse.ArgumentParser(
     description='A DEEP REINFORCED MODEL FOR ABSTRACTIVE SUMMARIZATION')
 
-parser.add_argument('--logdir', type=str, default='logdir_{}')
+parser.add_argument('--logdir', type=str, default='logdir')
 parser.add_argument('--epochs', type=int, default=40)
-parser.add_argument('--batch_size', type=int, default=16)
+parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--seed', type=int, default=1111)
 parser.add_argument('--data', type=str, default='./data/corpus')
 parser.add_argument('--ml_lr', type=float, default=0.001)
 parser.add_argument('--lr', type=float, default=0.0001)
 parser.add_argument('--dropout', type=float, default=0.5)
-parser.add_argument('--emb_dim', type=int, default=64)
-parser.add_argument('--enc_hsz', type=int, default=64)
+parser.add_argument('--emb_dim', type=int, default=100)
+parser.add_argument('--enc_hsz', type=int, default=100)
 parser.add_argument('--gamma', type=float, default=0.9984)
 parser.add_argument('--clip_norm', type=float, default=5.)
 
@@ -32,7 +32,6 @@ args.l_max_len = data["max_l_len"]
 args.src_vs = data['dict']['src_size']
 args.tgt_vs = data['dict']['tgt_size']
 args.dec_hsz = args.enc_hsz * 2
-args.logdir = args.logdir.format(time.time())
 
 training_data = DataLoader(
     data['train']['data'],
@@ -87,6 +86,12 @@ config.gpu_options.allow_growth = True
 
 try:
     with sv.managed_session(config=config) as sess:
+        # for batch in training_data:
+        #     merged, step = model.ml_train_step(batch, sess)
+        #     summary_writer.add_summary(merged, step)
+        #     if step % 100 == 0:
+        #         summary_writer.flush()
+
         for epoch in range(1, args.epochs + 1):
             if sv.should_stop():
                 break

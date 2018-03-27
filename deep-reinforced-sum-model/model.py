@@ -8,6 +8,35 @@ from rouge import rouge_l
 from attention import intra_temp_atten, intra_decoder_atten
 
 
+def infer_length(seq, eos_ix, time_major=False, dtype=tf.int32):
+    """
+    compute length given output indices and eos code
+    :param seq: tf matrix [time,batch] if time_major else [batch,time]
+    :param eos_ix: integer index of end-of-sentence token
+    :returns: lengths, int32 vector of shape [batch]
+    """
+    axis = 0 if time_major else 1
+    is_eos = tf.cast(tf.equal(seq, eos_ix), dtype)
+    count_eos = tf.cumsum(is_eos, axis=axis, exclusive=True)
+    lengths = tf.reduce_sum(tf.cast(tf.equal(count_eos, 0), dtype), axis=axis)
+    return lengths
+
+
+def infer_mask(seq, eos_ix, time_major=False, dtype=tf.float32):
+    """
+    compute mask given output indices and eos code
+    :param seq: tf matrix [time,batch] if time_major else [batch,time]
+    :param eos_ix: integer index of end-of-sentence token
+    :returns: mask, float32 matrix with '0's and '1's of same shape as seq
+    """
+    axis = 0 if time_major else 1
+    lengths = infer_length(seq, eos_ix, time_major=time_major)
+    mask = tf.sequence_mask(lengths, maxlen=tf.shape(seq)[axis], dtype=dtype)
+    if time_major:
+        mask = tf.transpose(mask)
+    return mask
+
+
 def embedding(name_op, vocab_size, emb_dim, uniform_init, zero_pad=True):
     emb_matrix = tf.get_variable(name_op,
                                  dtype=tf.float32,
@@ -33,13 +62,14 @@ class Summarizor(object):
         self.uniform_init = tf.random_uniform_initializer(
             -std, std, seed=args.seed)
 
+        # for props sampling
+        self.prev = tf.expand_dims(tf.constant(
+            np.arange(batch_size, dtype=np.int64)), -1)
+
         self.ml_optimizer = tf.train.AdamOptimizer(
-            self.args.ml_lr, beta1=0.9, beta2=0.98, epsilon=1e-8)
+            args.ml_lr, beta1=0.9, beta2=0.98, epsilon=1e-8)
         self.optimizer = tf.train.AdamOptimizer(
             self.args.lr, beta1=0.9, beta2=0.98, epsilon=1e-8)
-
-        self.variables = tf.get_collection(
-            tf.GraphKeys.TRAINABLE_VARIABLES, scope="vars")
 
         self.init_placeholders()
         self.init_vars()
@@ -88,12 +118,6 @@ class Summarizor(object):
             self.w_base_proj = tf.get_variable("w_base", [args.emb_dim,
                                                           args.dec_hsz], dtype=tf.float32, initializer=self.uniform_init)
 
-            self.w_base_out = tf.nn.tanh(
-                tf.transpose(tf.matmul(self.tgt_emb_matrix, self.w_base_proj), perm=[1, 0]))
-
-            self.b_base_out = tf.Variable(tf.constant(
-                0.1, shape=[args.tgt_vs]), name='b_base')
-
     def build(self):
         args = self.args
 
@@ -114,20 +138,16 @@ class Summarizor(object):
                 logits=ml_props, labels=self.label)
             ml_loss = tf.reduce_mean(ml_loss)
 
-            rl_loss = tf.nn.softmax_cross_entropy_with_logits(
-                logits=rl_props, labels=self.label)
-            rl_loss = tf.reduce_mean(rl_loss)
+            rl_loss, reward, bl_reward, p_reward = self._reinforced(
+                s_words, b_words, rl_props)
 
             self.mix_loss = args.gamma * rl_loss + (1. - args.gamma) * ml_loss
 
-            p_reward, bl_reward = self._reward(s_words, b_words)
-            reward = p_reward - bl_reward
-            self.gradients = self.optimizer.compute_gradients(
-                self.mix_loss)
+            self.gradients = self.optimizer.compute_gradients(self.mix_loss)
             for i, (grad, var) in enumerate(self.gradients):
                 if grad is not None:
-                    self.gradients[i] = (tf.clip_by_norm(
-                        grad * reward, args.clip_norm), var)
+                    self.gradients[i] = (
+                        tf.clip_by_norm(grad, args.clip_norm), var)
 
             for grad, var in self.gradients:
                 tf.summary.histogram(var.name, var)
@@ -140,6 +160,9 @@ class Summarizor(object):
             tf.summary.scalar('ml_loss', ml_loss)
             tf.summary.scalar('rl_loss', rl_loss)
             tf.summary.scalar('mix_loss', self.mix_loss)
+
+        self.ml_train_op = self.ml_optimizer.minimize(
+            ml_loss, global_step=self.global_step)
 
         self.train_op = self.optimizer.apply_gradients(
             self.gradients, global_step=self.global_step)
@@ -156,7 +179,7 @@ class Summarizor(object):
         }
 
         _, step, merged = sess.run([
-            self.train_op, self.global_step, self.merged], feed_dict)
+            self.ml_train_op, self.global_step, self.merged], feed_dict)
 
         return merged, step
 
@@ -263,7 +286,6 @@ class Summarizor(object):
 
             props = tf.expand_dims(tf.nn.xw_plus_b(
                 out, self.w_out, self.b_out), 1)  # bsz*1*f
-            word = tf.argmax(props, -1)  # bsz*1
 
             tgt_emb = tf.nn.embedding_lookup(
                 self.tgt_emb_matrix, tf.expand_dims(self.label_ids[:, step], 1))
@@ -313,19 +335,27 @@ class Summarizor(object):
                 word = tf.expand_dims(tf.argmax(props, -1), -1)
             else:
                 word = tf.multinomial(tf.exp(props), 1)
+                s_prop = tf.expand_dims(tf.gather_nd(
+                    props, tf.concat((self.prev, word), -1)), -1)
+                outputs.append(s_prop)
 
             words.append(word)
             tgt_emb = tf.nn.embedding_lookup(self.tgt_emb_matrix, word)
-
-            outputs.append(tf.expand_dims(props, 1))
 
         if max_props:
             return tf.concat(words, 1)
         else:
             return tf.concat(outputs, 1), tf.concat(words, 1)
 
-    def _reward(self, s_words, b_words):
+    def _reinforced(self, s_words, b_words, s_props):
+        args = self.args
+
         bl_reward = tf.py_func(rouge_l, [b_words, self.label_ids], tf.float32)
         p_reward = tf.py_func(rouge_l, [s_words, self.label_ids], tf.float32)
+        reward = bl_reward - p_reward
 
-        return tf.reduce_mean(p_reward), tf.reduce_mean(bl_reward)
+        mask = infer_mask(s_words, self.label_ids)
+
+        rl_loss = tf.reduce_sum(s_props * mask * reward) / tf.reduce_sum(mask)
+
+        return rl_loss, tf.reduce_mean(reward), tf.reduce_mean(bl_reward), tf.reduce_mean(p_reward)
