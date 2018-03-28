@@ -1,13 +1,10 @@
 import argparse
 
 parser = argparse.ArgumentParser(
-    description='A DEEP REINFORCED MODEL FOR ABSTRACTIVE SUMMARIZATION')
+    description='REINFORCED TRANSLATE')
 
-parser.add_argument('--pretrain_dir', type=str, default='./pretrain_dir')
 parser.add_argument('--train_dir', type=str, default='./train_dir')
 parser.add_argument('--epochs', type=int, default=40)
-parser.add_argument('--pretrain_steps', type=int, default=25000)
-parser.add_argument('--train_steps', type=int, default=100000)
 parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--seed', type=int, default=1111)
 parser.add_argument('--data', type=str, default='./data/corpus')
@@ -16,7 +13,6 @@ parser.add_argument('--lr', type=float, default=1e-5)
 parser.add_argument('--dropout', type=float, default=0.5)
 parser.add_argument('--emb_dim', type=int, default=100)
 parser.add_argument('--rnn_hsz', type=int, default=100)
-parser.add_argument('--clip_norm', type=float, default=5.)
 
 args = parser.parse_args()
 
