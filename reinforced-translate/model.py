@@ -122,7 +122,7 @@ class Model(object):
                 return tf.concat(words, 1), tf.concat(outputs, 1)
 
 
-class Supervisord:
+class Supervisor:
     def __init__(self, model, args):
         self.args = args
 

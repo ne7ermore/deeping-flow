@@ -57,7 +57,7 @@ import numpy as np
 
 import os
 
-from model import Supervisord, Model, Reinforced
+from model import Supervisor, Model, Reinforced
 
 tf.set_random_seed(args.seed)
 
@@ -65,7 +65,7 @@ config = tf.ConfigProto()
 config.gpu_options.allow_growth = True
 
 model = Model(args, args.batch_size)
-ml = Supervisord(model, args)
+ml = Supervisor(model, args)
 rl = Reinforced(model, args)
 
 init = tf.global_variables_initializer()
@@ -113,7 +113,7 @@ with sv.managed_session(config=config) as sess:
         feed_dict = {
             model.src: batch.data,
             model.tgt: batch.label,
-            model.dropout: .1,
+            model.dropout: 1.,
         }
         words = sess.run([rl.words], feed_dict)
         [print(" ".join([args.tgt_id2w[_id] for _id in ids]))
