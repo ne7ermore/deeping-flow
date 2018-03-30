@@ -4,7 +4,7 @@ parser = argparse.ArgumentParser(
     description='A DEEP REINFORCED MODEL FOR ABSTRACTIVE SUMMARIZATION')
 
 parser.add_argument('--logdir', type=str, default='logdir')
-parser.add_argument('--epochs', type=int, default=20)
+parser.add_argument('--epochs', type=int, default=10)
 parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--seed', type=int, default=1111)
 parser.add_argument('--data', type=str, default='./data/corpus')
