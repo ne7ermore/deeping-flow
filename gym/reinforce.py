@@ -66,7 +66,7 @@ from itertools import count
 policy = Policy(IN_DIM, OUT_DIM, args.hidden_dim)
 
 
-def main():
+def train():
     init = tf.global_variables_initializer()
     saver = tf.train.Saver()
 
@@ -100,16 +100,14 @@ def main():
             rewards = np.asarray(rewards)
             rewards = (rewards - rewards.mean()) / \
                 (rewards.std() + np.finfo(np.float32).eps)
+
             feed_dict = {
                 policy.state: np.asarray(states),
                 policy.rewards: rewards,
                 policy.selected_actions: np.asarray(actions),
             }
-
             sess.run([policy.train_op], feed_dict)
-
-            print("This time length - {}".format(step))
 
 
 if __name__ == '__main__':
-    main()
+    train()
