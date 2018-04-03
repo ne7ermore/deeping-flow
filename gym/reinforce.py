@@ -42,12 +42,12 @@ class Policy(object):
                 tf.float32, [None], name="actions")
 
         with tf.variable_scope('init_layers'):
-            lr1 = tf.keras.layers.Dense(h_dim)
-            lr2 = tf.keras.layers.Dense(out_dim)
+            lr1 = tf.keras.layers.Dense(h_dim, activation=tf.nn.relu)
+            lr2 = tf.keras.layers.Dense(out_dim, activation=tf.nn.softmax)
 
         with tf.variable_scope('init_graph'):
-            hidden = tf.nn.relu(lr1(self.state))
-            props = tf.nn.softmax(lr2(hidden))
+            hidden = lr1(self.state)
+            props = lr2(hidden)
 
             dist = tf.distributions.Categorical(props)
             self.action = dist.sample()
