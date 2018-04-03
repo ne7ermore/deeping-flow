@@ -7,4 +7,11 @@
 * gym
 
 ## Reslut
-<p align="center"><img src="data/Kapture 2018-03-31 at 0.04.32.gif" /></p>
+
+### Policy Gradient
+
+<p align="center"><img src="data/policy.gif" /></p>
+
+### Actor Critic
+
+<p align="center"><img src="data/actorcritic.gif" /></p>

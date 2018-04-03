@@ -3,7 +3,7 @@ import argparse
 parser = argparse.ArgumentParser(description='gym reinforce')
 
 parser.add_argument('--gamma', type=float, default=0.99)
-parser.add_argument('--lr', type=float, default=1e-2)
+parser.add_argument('--lr', type=float, default=3e-2)
 parser.add_argument('--seed', type=int, default=543)
 parser.add_argument('--hidden_dim', type=int, default=128)
 parser.add_argument('--render', action='store_true')
@@ -31,7 +31,7 @@ import numpy as np
 tf.set_random_seed(args.seed)
 
 
-class Policy(object):
+class ActorCritic(object):
     def __init__(self, in_dim, out_dim, h_dim):
         with tf.variable_scope('init_variables'):
             self.state = tf.placeholder(
@@ -40,22 +40,38 @@ class Policy(object):
                 tf.float32, [None], name="rewards")
             self.selected_actions = tf.placeholder(
                 tf.float32, [None], name="actions")
+            self.td_error = tf.placeholder(
+                tf.float32, [None], name="td_error")
 
         with tf.variable_scope('init_layers'):
-            lr1 = tf.keras.layers.Dense(h_dim)
-            lr2 = tf.keras.layers.Dense(out_dim)
+            h_layer = tf.keras.layers.Dense(h_dim, activation=tf.nn.relu)
+            action_layer = tf.keras.layers.Dense(
+                out_dim, activation=tf.nn.softmax)
+            value_layer = tf.keras.layers.Dense(1)
 
         with tf.variable_scope('init_graph'):
-            hidden = tf.nn.relu(lr1(self.state))
-            props = tf.nn.softmax(lr2(hidden))
+            hidden = h_layer(self.state)
+            props = action_layer(hidden)
+            self.value = tf.reshape(value_layer(hidden), [-1])
 
             dist = tf.distributions.Categorical(props)
             self.action = dist.sample()
             self.log_scores = dist.log_prob(self.selected_actions)
 
         with tf.variable_scope('loss'):
-            loss = tf.reduce_sum(-self.log_scores * self.rewards)
-            self.train_op = tf.train.AdamOptimizer(args.lr).minimize(loss)
+            value_loss = self._smooth_l1_loss(self.value, self.rewards)
+            action_loss = -tf.reduce_sum(self.log_scores * self.td_error)
+
+            self.train_op = tf.train.AdamOptimizer(
+                args.lr).minimize(value_loss + action_loss)
+
+    def _smooth_l1_loss(self, value, rewards):
+        thres = tf.constant(1, dtype=tf.float32)
+        mae = tf.abs(value - rewards)
+        loss = tf.keras.backend.switch(tf.greater(
+            mae, thres), (mae - 0.5), 0.5 * tf.pow(mae, 2))
+
+        return tf.reduce_sum(loss)
 
 
 # ##############################################################################
@@ -63,7 +79,7 @@ class Policy(object):
 ################################################################################
 from itertools import count
 
-policy = Policy(IN_DIM, OUT_DIM, args.hidden_dim)
+ac = ActorCritic(IN_DIM, OUT_DIM, args.hidden_dim)
 
 
 def train():
@@ -77,14 +93,17 @@ def train():
             state = env.reset()
             if args.render:
                 env.render()
-            states, policy_rewards, actions = [state], [], []
+            states, policy_rewards, actions, values = [
+                state], [], [], []
 
             for step in range(10000):
-                action = sess.run(
-                    [policy.action], feed_dict={policy.state: [state]})[0][0]
+                action, value = sess.run([ac.action, ac.value], feed_dict={
+                    ac.state: [state]})
+                action, value = action[0], value[0]
                 state, reward, done, _ = env.step(action)
                 policy_rewards.append(reward)
                 actions.append(action)
+                values.append(value)
                 if done:
                     break
                 states.append(state)
@@ -97,13 +116,15 @@ def train():
             rewards = np.asarray(rewards)
             rewards = (rewards - rewards.mean()) / \
                 (rewards.std() + np.finfo(np.float32).eps)
+            values = np.asarray(values)
 
             feed_dict = {
-                policy.state: np.asarray(states),
-                policy.rewards: rewards,
-                policy.selected_actions: np.asarray(actions),
+                ac.state: np.asarray(states),
+                ac.rewards: rewards,
+                ac.selected_actions: np.asarray(actions),
+                ac.td_error: (rewards - values),
             }
-            sess.run([policy.train_op], feed_dict)
+            sess.run([ac.train_op], feed_dict)
 
             if more < step:
                 print('Epoch {}\tlength: {:5d}\t'.format(epoch, step))

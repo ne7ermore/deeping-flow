@@ -30,7 +30,7 @@ $ python train.py
 
 ## Dependencies
 * [Python 3.5](https://www.python.org)
-* [TensorFlow 1.4](http://pytorch.org/)
+* [TensorFlow 1.6](http://pytorch.org/)
 * [Numpy 1.13.1](http://www.numpy.org/)
 
 ## Author
