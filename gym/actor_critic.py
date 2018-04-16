@@ -10,10 +10,6 @@ parser.add_argument('--render', action='store_true')
 
 args = parser.parse_args()
 
-# ##############################################################################
-# CartPole-v0
-################################################################################
-
 import gym
 env = gym.make('CartPole-v0').unwrapped
 env.seed(args.seed)
@@ -21,9 +17,6 @@ env.seed(args.seed)
 IN_DIM = env.observation_space.shape[0]
 OUT_DIM = env.action_space.n
 
-# ##############################################################################
-# Model
-################################################################################
 
 import tensorflow as tf
 import numpy as np
@@ -33,6 +26,8 @@ tf.set_random_seed(args.seed)
 
 class ActorCritic(object):
     def __init__(self, in_dim, out_dim, h_dim):
+        self.global_step = tf.train.get_or_create_global_step()
+
         with tf.variable_scope('init_variables'):
             self.state = tf.placeholder(
                 tf.float32, [None, in_dim], name="state")
@@ -63,7 +58,7 @@ class ActorCritic(object):
             action_loss = -tf.reduce_sum(self.log_scores * self.td_error)
 
             self.train_op = tf.train.AdamOptimizer(
-                args.lr).minimize(value_loss + action_loss)
+                args.lr).minimize(value_loss + action_loss, global_step=self.global_step)
 
     def _smooth_l1_loss(self, value, rewards):
         thres = tf.constant(1, dtype=tf.float32)
@@ -74,9 +69,6 @@ class ActorCritic(object):
         return tf.reduce_sum(loss)
 
 
-# ##############################################################################
-# Train
-################################################################################
 from itertools import count
 
 ac = ActorCritic(IN_DIM, OUT_DIM, args.hidden_dim)
@@ -88,7 +80,15 @@ def train():
     config.gpu_options.allow_growth = True
     more = 0
 
-    with tf.train.MonitoredTrainingSession(config=config) as sess:
+    saver = tf.train.Saver()
+    saver_hook = tf.train.CheckpointSaverHook(
+        './train/', save_steps=2, saver=saver)
+
+    summary_op = tf.summary.scalar('value', 1)
+    summary_hook = tf.train.SummarySaverHook(save_steps=2,
+                                             summary_op=summary_op)
+
+    with tf.train.MonitoredTrainingSession(config=config, hooks=[saver_hook, summary_hook]) as sess:
         for epoch in count(1):
             state = env.reset()
             if args.render:
@@ -124,7 +124,7 @@ def train():
                 ac.selected_actions: np.asarray(actions),
                 ac.td_error: (rewards - values),
             }
-            sess.run([ac.train_op], feed_dict)
+            sess.run([ac.global_step, ac.train_op], feed_dict)
 
             if more < step:
                 print('Epoch {}\tlength: {:5d}\t'.format(epoch, step))

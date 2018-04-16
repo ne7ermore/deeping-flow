@@ -10,9 +10,6 @@ parser.add_argument('--render', action='store_true')
 
 args = parser.parse_args()
 
-# ##############################################################################
-# CartPole-v0
-################################################################################
 
 import gym
 env = gym.make('CartPole-v0').unwrapped
@@ -21,9 +18,6 @@ env.seed(args.seed)
 IN_DIM = env.observation_space.shape[0]
 OUT_DIM = env.action_space.n
 
-# ##############################################################################
-# Model
-################################################################################
 
 import tensorflow as tf
 import numpy as np
@@ -58,9 +52,6 @@ class Policy(object):
             self.train_op = tf.train.AdamOptimizer(args.lr).minimize(loss)
 
 
-# ##############################################################################
-# Train
-################################################################################
 from itertools import count
 
 policy = Policy(IN_DIM, OUT_DIM, args.hidden_dim)
