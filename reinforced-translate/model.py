@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 import editdistance
 
-from const import BOS, EOS
+from const import BOS, PAD
 
 
 def pad_mask(seq, index, shape, dtype=tf.float32):
@@ -142,7 +142,7 @@ class Supervisor:
 
             tgt_props = tf.reshape(tf.gather_nd(props, _index), [
                                    args.batch_size, args.max_len])
-            mask = pad_mask(model.tgt, EOS, [args.batch_size, args.max_len])
+            mask = pad_mask(model.tgt, PAD, [args.batch_size, args.max_len])
 
             self.loss = -tf.reduce_sum(tgt_props * mask) / tf.reduce_sum(mask)
             self.train_op = optimizer.minimize(

@@ -3,7 +3,7 @@ import math
 import tensorflow as tf
 import numpy as np
 
-from const import BOS, EOS
+from const import BOS, PAD
 from rouge import rouge_l
 from attention import intra_temp_atten, intra_decoder_atten
 
@@ -250,7 +250,7 @@ class Supervisor:
         props = tf.reshape(props, [-1, args.tgt_vs])
         tgt_props = tf.reshape(_gather_index(props, model.tgt, model.prev), [
                                args.batch_size, args.l_max_len])
-        mask = pad_mask(model.tgt, EOS, [args.batch_size, args.l_max_len])
+        mask = pad_mask(model.tgt, PAD, [args.batch_size, args.l_max_len])
 
         loss = -tf.reduce_sum(tgt_props * mask) / tf.reduce_sum(mask)
 
