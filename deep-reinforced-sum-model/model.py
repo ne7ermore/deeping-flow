@@ -151,6 +151,7 @@ class Summarizor(object):
                 dec_c_t = tf.constant(
                     0., shape=[self.batch_size, args.dec_hsz])
             else:
+                # TODO: fixed https://github.com/ne7ermore/deeping-flow/issues/1
                 dec_c_t = intra_decoder_atten(
                     self.w_dec, dec_hidden, dec_out)
 

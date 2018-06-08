@@ -13,7 +13,7 @@ make download-data
 * python 3.6.2
 * TensorFlow 1.6
 * numpy 1.14.0
-* tqdm 4.19.5
+* pandas 0.23.0
 
 ## How to train
 

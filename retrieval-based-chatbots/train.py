@@ -9,30 +9,32 @@ from corpus import middle_load
 from data_loader import DataLoader
 
 parser = argparse.ArgumentParser(
-    description='A Hierarchical End-to-End Model for Jointly Improving Text Summarization and Sentiment Classification')
+    description='A New Architecture for Multi-turn Response Selection in Retrieval-Based Chatbots')
 
 parser.add_argument('--logdir', type=str, default='logdir')
 parser.add_argument('--data', type=str, default='./data/corpus')
 
-parser.add_argument('--epochs', type=int, default=10)
+parser.add_argument('--epochs', type=int, default=20)
 parser.add_argument('--batch_size', type=int, default=64)
-parser.add_argument('--label_size', type=int, default=5)
-parser.add_argument('--seed', type=int, default=529)
-parser.add_argument('--lr', type=float, default=.0003)
+parser.add_argument('--seed', type=int, default=607)
+parser.add_argument('--lr', type=float, default=.001)
 
-parser.add_argument('--dropout', type=float, default=.2)
-parser.add_argument('--emb_dim', type=int, default=256)
-parser.add_argument('--rnn_hsz', type=int, default=256)
-parser.add_argument('--eps', type=float, default=1e-8)
-parser.add_argument('--lamda', type=float, default=.5)
-parser.add_argument('--clip_norm', type=float, default=10.)
+parser.add_argument('--dropout', type=float, default=.5)
+parser.add_argument('--emb_dim', type=int, default=200)
+parser.add_argument('--first_rnn_hsz', type=int, default=200)
+parser.add_argument('--fillters', type=int, default=8)
+parser.add_argument('--kernel_size', type=int, default=3)
+parser.add_argument('--match_vec_dim', type=int, default=50)
+parser.add_argument('--second_rnn_hsz', type=int, default=50)
+
 
 args = parser.parse_args()
 
 data = middle_load(args.data)
-args.max_ori_len = data["max_ori_len"]
-args.max_sum_len = data["max_sum_len"]
+args.max_cont_len = data["max_cont_len"]
+args.max_utte_len = data["max_utte_len"]
 args.dict_size = data['dict']['dict_size']
+args.kernel_size = (args.kernel_size, args.kernel_size)
 
 print("=" * 30 + "arguments" + "=" * 30)
 for k, v in args.__dict__.items():
@@ -42,19 +44,19 @@ for k, v in args.__dict__.items():
 print("=" * 60)
 
 training_data = DataLoader(
-    data['train']['original'],
-    data['train']['summary'],
-    data['train']['label'],
-    data['max_ori_len'],
-    data['max_sum_len'],
+    data['train']['utterances'],
+    data['train']['responses'],
+    data['train']['labels'],
+    data['max_cont_len'],
+    data['max_utte_len'],
     bsz=args.batch_size)
 
 validation_data = DataLoader(
-    data['test']['original'],
-    data['test']['summary'],
-    data['test']['label'],
-    data['max_ori_len'],
-    data['max_sum_len'],
+    data['test']['utterances'],
+    data['test']['responses'],
+    data['test']['labels'],
+    data['max_cont_len'],
+    data['max_utte_len'],
     bsz=args.batch_size,
     shuffle=False)
 
@@ -81,11 +83,8 @@ with sv.managed_session(config=config) as sess:
         if sv.should_stop():
             break
 
-        if epoch > 5:
-            lr /= 2.
-
         for batch in training_data:
-            step, merged = model.train_step(batch, sess, args.dropout, lr)
+            step, merged = model.train_step(batch, sess, args.dropout)
             summary_writer.add_summary(merged, step)
             if step % 100 == 0:
                 summary_writer.flush()

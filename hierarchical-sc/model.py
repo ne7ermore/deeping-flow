@@ -50,16 +50,13 @@ class Model(object):
         with tf.variable_scope('init_layers'):
             self.emb = tf.keras.layers.Embedding(
                 args.dict_size, args.emb_dim)
-
             self.fw_rnn_cell = tf.nn.rnn_cell.GRUCell(args.rnn_hsz)
             self.bw_rnn_cell = tf.nn.rnn_cell.GRUCell(args.rnn_hsz)
             self.dec_cell = tf.nn.rnn_cell.GRUCell(args.rnn_hsz)
-
             self.summ_att_w = tf.keras.layers.Dense(
                 args.rnn_hsz, use_bias=False)
             self.cls_att_w = tf.keras.layers.Dense(
                 args.rnn_hsz, use_bias=False)
-
             self.summ_gen = tf.keras.layers.Dense(args.dict_size)
             self.cls_pred = tf.keras.layers.Dense(args.label_size)
 
@@ -151,8 +148,7 @@ class Model(object):
 
             loss = summ_loss + args.lamda * cls_loss
 
-            optimizer = tf.train.AdamOptimizer(
-                self.lr, beta1=args.beta_1, beta2=args.beta_2, epsilon=args.eps)
+            optimizer = tf.train.AdamOptimizer(self.lr)
             gradients = optimizer.compute_gradients(loss)
             for i, (grad, var) in enumerate(gradients):
                 if grad is not None:
