@@ -4,21 +4,24 @@ import numpy as np
 from const import BOS, PAD
 
 
-def multi_view_att(ori_memory_t, att_w, dec_hidden, *args):
+def multi_view_att(ori_memory, att_w, dec_hidden, *args):
     bsz, max_len, rnn_hsz = args
 
-    dec_hidden_t = tf.transpose(dec_hidden, perm=[1, 0])
-    dec_hidden_t = att_w(dec_hidden_t)
+    dec_hidden = att_w(dec_hidden)  # b*f
 
-    flat_omt = tf.reshape(ori_memory_t, [-1, rnn_hsz])
-    beta_is = tf.exp(tf.tanh(tf.matmul(flat_omt, dec_hidden_t)))
-    beta_is = tf.reshape(beta_is, [max_len, bsz, rnn_hsz])
+    ori_memory_t = tf.transpose(ori_memory, perm=[2, 0, 1])  # f*b*t
+    flatten_om = tf.layers.flatten(ori_memory_t)
+
+    beta_is = tf.exp(tf.tanh(tf.matmul(dec_hidden, flatten_om)))  # b*b*t
+    beta_is = tf.reshape(beta_is, [bsz, bsz, max_len])
+    beta_is = tf.transpose(beta_is, perm=[2, 0, 1])  # t*b*b
 
     beta_i_sum = tf.reduce_sum(beta_is, axis=0, keepdims=True)
     beta_i_sum = tf.tile(beta_i_sum, [max_len, 1, 1])
     beta_is = tf.div(beta_is, beta_i_sum)
 
-    return tf.reduce_sum(beta_is * ori_memory_t, axis=0)
+    ori_memory_t = tf.transpose(ori_memory, perm=[1, 0, 2])
+    return tf.reduce_sum(tf.matmul(beta_is, ori_memory_t), axis=0)
 
 
 def pad_mask(seq, index, shape, dtype=tf.float32):
@@ -99,13 +102,13 @@ class Model(object):
                 if self.dropout != 1.:
                     dec_hidden = tf.nn.dropout(dec_hidden, self.dropout)
 
-                v_c = multi_view_att(ori_memory_t,
+                v_c = multi_view_att(ori_memory,
                                      self.summ_att_w,
                                      dec_hidden,
                                      bsz,
                                      args.max_ori_len,
                                      args.rnn_hsz)
-                v_t = multi_view_att(ori_memory_t,
+                v_t = multi_view_att(ori_memory,
                                      self.cls_att_w,
                                      dec_hidden,
                                      bsz,
@@ -127,7 +130,6 @@ class Model(object):
 
         with tf.variable_scope("classifier"):
             r = tf.concat([v_ts, ori_memory], 1)
-            r = tf.nn.relu(r)
             r = tf.reduce_mean(r, axis=-1)
             l_props = self.cls_pred(r)
             predictions = tf.argmax(l_props, 1)

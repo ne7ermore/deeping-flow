@@ -1,4 +1,4 @@
-## SeqMatchSeq
+## Summarization
 Module implemention from "[A Deep Reinforced Model for Abstractive Summarization](https://arxiv.org/abs/1705.04304)"
 
 ## Requirement

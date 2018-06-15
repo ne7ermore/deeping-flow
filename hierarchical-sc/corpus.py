@@ -100,7 +100,7 @@ class Corpus(object):
             ori_ignore = self.dict(origins + summurys, self._min_word_count)
             self.train_origins = origins
             self.train_summurys = summurys
-            self.train_labels = df["score"].values
+            self.train_labels = df["score"].values - 1
 
             print("Ignored origin counts - [{}]".format(ori_ignore))
             print(
@@ -110,7 +110,7 @@ class Corpus(object):
         else:
             self.test_origins = origins
             self.test_summurys = summurys
-            self.test_labels = df["score"].values
+            self.test_labels = df["score"].values - 1
             print(
                 'Test data - ignore original lines - [{}]'.format(ignore_ori_nums[0]))
             print(
