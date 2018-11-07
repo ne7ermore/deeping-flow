@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 import editdistance
 
-from const import BOS, PAD
+from const import BOS, PAD, EOS
 
 
 def pad_mask(seq, index, shape, dtype=tf.float32):

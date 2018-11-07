@@ -32,6 +32,7 @@ def pad_mask(seq, index, shape, dtype=tf.float32):
 def gather_index(props, tgt, prev):
     tgt = tf.reshape(tgt, [-1, 1])
     index = tf.concat((prev, tgt), -1)
+
     return tf.gather_nd(props, index)
 
 
