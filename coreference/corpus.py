@@ -100,13 +100,10 @@ class Corpus(object):
                     src_texts.append(replaced_qs)
                     src_turn.append(turns)
 
-                    # step 2 - 截止符位置
                     eos_indexs.append(eos_index)
 
-                    # step 3 - tgt
                     tgt_texts.append(([WORD[BOS]]+replaced_new_tgt_words))
 
-                    # step 4 - index
                     tgt_indexs.append(t_index)
 
                     src_contexts.append("".join(replaced_qs))
@@ -130,6 +127,7 @@ class Corpus(object):
 
         index = np.arange(tgt_texts.shape[0])
         np.random.shuffle(index)
+
         src_context = src_context[index]
         src_texts = src_texts[index]
         src_turn = src_turn[index]
@@ -150,20 +148,6 @@ class Corpus(object):
         self.tgt_indexs_test = tgt_indexs[:2000]
         self.tgt_texts_test = tgt_texts[:2000]
         self.eos_indexs_test = eos_indexs[:2000]
-
-    def save_vecs(self):
-        train_vecs = []
-        for context in self.src_context_train:
-            _, v = self.bert.encode([context])
-            train_vecs.append(v[0])
-
-        test_vecs = []
-        for context in self.src_context_test:
-            _, v = self.bert.encode([context])
-            test_vecs.append(v[0])
-
-        np.save("vecs", {"train": np.asarray(train_vecs),
-                         "test": np.asarray(test_vecs)})
 
     def save(self):
         data = {
