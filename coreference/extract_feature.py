@@ -11,10 +11,9 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 class InputExample(object):
 
-    def __init__(self, unique_id, text_a, text_b):
+    def __init__(self, unique_id, text_a):
         self.unique_id = unique_id
         self.text_a = text_a
-        self.text_b = text_b
 
 
 class InputFeatures(object):
@@ -30,17 +29,14 @@ class InputFeatures(object):
 
 class BertVector:
 
-    def __init__(self, batch_size=32,
-                 max_seq_len=200,
-                 graph_file="chinese_wwm_ext_L-12_H-768_A-12/graph",
-                 vocab_file="chinese_wwm_ext_L-12_H-768_A-12/vocab.txt",
-                 output_dir="chinese_wwm_ext_L-12_H-768_A-12/",
-                 config_name="chinese_wwm_ext_L-12_H-768_A-12/bert_config.json",
-                 checkpoint_name="chinese_wwm_ext_L-12_H-768_A-12/bert_model.ckpt"):
-        """
-        init BertVector
-        :param batch_size:     Depending on your memory default is 32
-        """
+    def __init__(self, batch_size=2,
+                 max_seq_len=184,
+                 graph_file="./chinese_bert/graph",
+                 vocab_file="/home/notebook/data/personal/model/chinese_bert/vocab.txt",
+                 output_dir="/home/notebook/data/personal/model/chinese_bert/",
+                 config_name="/home/notebook/data/personal/model/chinese_bert/bert_config.json",
+                 checkpoint_name="/home/notebook/data/personal/model/chinese_bert/bert_model.ckpt"):
+
         self.max_seq_length = max_seq_len
         self.gpu_memory_fraction = 1
         if os.path.exists(graph_file):
@@ -53,8 +49,8 @@ class BertVector:
             vocab_file=vocab_file, do_lower_case=True)
         self.batch_size = batch_size
         self.estimator = self.get_estimator()
-        self.input_queue = Queue(maxsize=1)
-        self.output_queue = Queue(maxsize=1)
+        self.input_queue = Queue(maxsize=10)
+        self.output_queue = Queue(maxsize=10)
         self.predict_thread = Thread(
             target=self.predict_from_queue, daemon=True)
         self.predict_thread.start()
@@ -74,10 +70,11 @@ class BertVector:
             output = tf.import_graph_def(graph_def,
                                          input_map={
                                              k + ':0': features[k] for k in input_names},
-                                         return_elements=['final_encodes:0'])
+                                         return_elements=['final_encodes:0', 'sentence_encodes:0'])
 
             return EstimatorSpec(mode=mode, predictions={
-                'encodes': output[0]
+                'encodes': output[0],
+                'sentence_encodes': output[1],
             })
 
         config = tf.ConfigProto()
@@ -87,7 +84,7 @@ class BertVector:
         config.graph_options.optimizer_options.global_jit_level = tf.OptimizerOptions.ON_1
 
         return Estimator(model_fn=model_fn, config=RunConfig(session_config=config),
-                         params={'batch_size': self.batch_size}, model_dir='tmp')
+                         params={'batch_size': self.batch_size}, model_dir='../tmp')
 
     def predict_from_queue(self):
         prediction = self.estimator.predict(
@@ -97,8 +94,8 @@ class BertVector:
 
     def encode(self, sentence):
         self.input_queue.put(sentence)
-        prediction = self.output_queue.get()['encodes']
-        return prediction
+        res = self.output_queue.get()
+        return res["encodes"], res["sentence_encodes"]
 
     def queue_predict_input_fn(self):
 
@@ -143,9 +140,6 @@ class BertVector:
             batch_size = params["batch_size"]
             num_examples = len(features)
 
-            # This is for demo purposes and does NOT scale to large data sets. We do
-            # not use Dataset.from_generator() because that uses tf.py_func which is
-            # not TPU compatible. The right way to load data is with TFRecordReader.
             d = tf.data.Dataset.from_tensor_slices({
                 "unique_ids":
                     tf.constant(all_unique_ids, shape=[
@@ -171,12 +165,8 @@ class BertVector:
 
         return input_fn
 
-    def model_fn_builder(self, bert_config, init_checkpoint):
-        """Returns `model_fn` closure for TPUEstimator."""
-
-        def model_fn(features, labels, mode, params, layer_indexes):  # pylint: disable=unused-argument
-            """The `model_fn` for TPUEstimator."""
-
+    def model_fn_builder(self, bert_config, init_checkpoint, layer_indexes):
+        def model_fn(features, labels, mode, params):
             unique_ids = features["unique_ids"]
             input_ids = features["input_ids"]
             input_mask = features["input_mask"]
@@ -227,34 +217,15 @@ class BertVector:
         return model_fn
 
     def convert_examples_to_features(self, seq_length, tokenizer):
-        """Loads a data file into a list of `InputBatch`s."""
+        features = []
         input_masks = []
         examples = self._to_example(self.input_queue.get())
         for (ex_index, example) in enumerate(examples):
             tokens_a = tokenizer.tokenize(example.text_a)
 
-            # if the sentences's length is more than seq_length, only use sentence's left part
             if len(tokens_a) > seq_length - 2:
                 tokens_a = tokens_a[0:(seq_length - 2)]
 
-            # The convention in BERT is:
-            # (a) For sequence pairs:
-            #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
-            #  type_ids: 0     0  0    0    0     0       0 0     1  1  1  1   1 1
-            # (b) For single sequences:
-            #  tokens:   [CLS] the dog is hairy . [SEP]
-            #  type_ids: 0     0   0   0  0     0 0
-            #
-            # Where "type_ids" are used to indicate whether this is the first
-            # sequence or the second sequence. The embedding vectors for `type=0` and
-            # `type=1` were learned during pre-training and are added to the wordpiece
-            # embedding vector (and position vector). This is not *strictly* necessary
-            # since the [SEP] token unambiguously separates the sequences, but it makes
-            # it easier for the model to learn the concept of sequences.
-            #
-            # For classification tasks, the first vector (corresponding to [CLS]) is
-            # used as as the "sentence vector". Note that this only makes sense because
-            # the entire model is fine-tuned.
             tokens = []
             input_type_ids = []
             tokens.append("[CLS]")
@@ -289,48 +260,35 @@ class BertVector:
                 input_mask=input_mask,
                 input_type_ids=input_type_ids)
 
-    def _truncate_seq_pair(self, tokens_a, tokens_b, max_length):
-        """Truncates a sequence pair in place to the maximum length."""
-
-        # This is a simple heuristic which will always truncate the longer sequence
-        # one token at a time. This makes more sense than truncating an equal percent
-        # of tokens from each, since if one sequence is very short then each token
-        # that's truncated likely contains more information than a longer sequence.
-        while True:
-            total_length = len(tokens_a) + len(tokens_b)
-            if total_length <= max_length:
-                break
-            if len(tokens_a) > len(tokens_b):
-                tokens_a.pop()
-            else:
-                tokens_b.pop()
-
     def _to_example(self, sentences):
-        import re
-        """
-        sentences to InputExample
-        :param sentences: list of strings
-        :return: list of InputExample
-        """
         unique_id = 0
         for ss in sentences:
             line = tokenization.convert_to_unicode(ss)
             if not line:
                 continue
-            line = line.strip()
-            text_a = None
-            text_b = None
-            m = re.match(r"^(.*) \|\|\| (.*)$", line)
-            if m is None:
-                text_a = line
-            else:
-                text_a = m.group(1)
-                text_b = m.group(2)
-            yield InputExample(unique_id=unique_id, text_a=text_a, text_b=text_b)
+            text_a = line.strip()
+            yield InputExample(unique_id=unique_id, text_a=text_a)
             unique_id += 1
 
 
 if __name__ == "__main__":
+    import time
+    import numpy as np
+    from numpy.linalg import norm
+    import pandas as pd
+
+    def cosine(x, y):
+        return abs(np.dot(x, y) / (norm(x)*norm(y)))
 
     bert = BertVector()
-    print(bert.encode(["今天天气好吗"]))
+
+    question1 = "#的女主角名字叫什么"
+    question2 = "#的男主角是谁"
+    question3 = "#的女主角是谁"
+
+    q1, v1 = bert.encode([question1])
+    q2, v2 = bert.encode([question2])
+    q3, v3 = bert.encode([question3])
+
+    print(cosine(q1[0], q2[0]))
+    print(cosine(q1[0], q3[0]))

@@ -27,16 +27,16 @@ def optimize_graph(output_dir, config_name, max_seq_len, checkpoint_name, graph_
         from tensorflow.python.tools.optimize_for_inference_lib import optimize_for_inference
         tf.gfile.MakeDirs(output_dir)
 
-        logger.info('model config: %s' % config_name)
+        config_fp = config_name
+        logger.info('model config: %s' % config_fp)
 
         # 加载bert配置文件
-        with tf.gfile.GFile(config_name, 'r') as f:
+        with tf.gfile.GFile(config_fp, 'r') as f:
             bert_config = modeling.BertConfig.from_dict(json.load(f))
 
         logger.info('build graph...')
         # input placeholders, not sure if they are friendly to XLA
-        input_ids = tf.placeholder(
-            tf.int32, (None, max_seq_len), 'input_ids')
+        input_ids = tf.placeholder(tf.int32, (None, max_seq_len), 'input_ids')
         input_mask = tf.placeholder(
             tf.int32, (None, max_seq_len), 'input_mask')
         input_type_ids = tf.placeholder(
@@ -56,7 +56,6 @@ def optimize_graph(output_dir, config_name, max_seq_len, checkpoint_name, graph_
                 use_one_hot_embeddings=False)
 
             tvars = tf.trainable_variables()
-
             (assignment_map, _) = modeling.get_assignment_map_from_checkpoint(
                 tvars, checkpoint_name)
             tf.train.init_from_checkpoint(checkpoint_name, assignment_map)
@@ -66,15 +65,15 @@ def optimize_graph(output_dir, config_name, max_seq_len, checkpoint_name, graph_
 
             def mul_mask(x, m): return x * tf.expand_dims(m, axis=-1)
 
-            def masked_reduce_mean(x, m): return tf.reduce_sum(mul_mask(x, m), axis=1) / (
-                tf.reduce_sum(m, axis=1, keepdims=True) + 1e-10)
+            def masked_reduce_mean(x, m): return tf.reduce_sum(
+                mul_mask(x, m), axis=1) / (tf.reduce_sum(m, axis=1, keepdims=True) + 1e-10)
 
             input_mask = tf.cast(input_mask, tf.float32)
-
+            encoder_layer = tf.identity(encoder_layer, 'sentence_encodes')
             pooled = masked_reduce_mean(encoder_layer, input_mask)
             pooled = tf.identity(pooled, 'final_encodes')
 
-            output_tensors = [pooled]
+            output_tensors = [pooled, encoder_layer]
             tmp_g = tf.get_default_graph().as_graph_def()
 
         config = tf.ConfigProto(allow_soft_placement=True)
