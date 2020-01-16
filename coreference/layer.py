@@ -74,12 +74,19 @@ def position_wise(inputs, d_model, d_ff, dropout_rate, initializer, scope="posit
 
     with tf.compat.v1.variable_scope(scope, reuse=tf.compat.v1.AUTO_REUSE):
 
+        residual = inputs
+
+        inputs = layer_norm(inputs)
+
         outputs = tf.layers.dense(
             inputs, d_ff, activation=tf.nn.relu, kernel_initializer=initializer)
+
         outputs = tf.layers.dense(
             outputs, d_model, kernel_initializer=initializer)
+
         outputs = tf.nn.dropout(outputs, keep_prob=dropout_rate)
-        outputs = layer_norm(outputs+inputs)
+
+        outputs = outputs + residual
 
     return outputs
 
