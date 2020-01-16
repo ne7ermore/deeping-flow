@@ -21,6 +21,7 @@ Basics which are basic nns like Logistic, CNN, RNN, LSTM are implemented with fe
 * [Toy](https://github.com/ne7ermore/deeping-flow/tree/master/gym)
 * [Hierarchical SC](https://github.com/ne7ermore/deeping-flow/tree/master/hierarchical-sc)
 * [Retrieval Based Chatbots](https://github.com/ne7ermore/deeping-flow/tree/master/retrieval-based-chatbots)
+* [Co-Reference](https://github.com/ne7ermore/deeping-flow/tree/master/coreference)
 
 
 ## Getting Started
