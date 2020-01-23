@@ -18,4 +18,4 @@
 |--|--|
 |96%|93%|
 
-[Rouge-l]("https://github.com/ne7ermore/deeping-flow/blob/master/coreference/common.py#L153")
+* [Rouge-l](https://github.com/ne7ermore/deeping-flow/blob/master/coreference/common.py#L153)
