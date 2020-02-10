@@ -1,6 +1,7 @@
 import argparse
 import time
 import os
+from termcolor import colored
 
 import tensorflow as tf
 from tqdm import tqdm
@@ -80,6 +81,14 @@ bert = BertVector(max_seq_len=args.max_context_len)
 
 with sv.managed_session(config=config) as sess:
     os.makedirs(f"{args.model_path}_{args.cuda_device}", exist_ok=True)
+    logger = set_logger(colored('poiter network', 'yellow'),
+                        verbose, f"{args.model_path}_{args.cuda_device}/log")
+
+    logger.info("params info")
+    for k, v in args.__dict__.items():
+        logger.info(f"{k} - {v}")
+    logger.info("-"*90)
+
     save_data = {
         "word2idx": data["word2idx"],
         "max_context_len": data["max_len"],
@@ -88,25 +97,25 @@ with sv.managed_session(config=config) as sess:
     middle_save(save_data, f"{args.model_path}_{args.cuda_device}/corpus")
 
     if args.use_pretrain:
-        print("pretrain...")
-    for epoch in range(1, args.pre_epochs+1):
-        print(
-            f"pre-train epoch {epoch}/{args.pre_epochs} loss: {model.pre_train(training_data, sess, bert)/training_data.stop_step:.4f}")
+        logger.info("pretrain...")
+        for epoch in range(1, args.pre_epochs+1):
+            logger.info(
+                f"pre-train epoch {epoch}/{args.pre_epochs} loss: {model.pre_train(training_data, sess, bert)/training_data.stop_step:.4f}")
 
-    for epoch in range(1, args.epochs + 1):
+    for epoch in range(1, args.epochs+1):
         if sv.should_stop():
             break
 
         total_loss, total_correct, total_gold, rouge_scores = model.train(
             training_data, sess, bert)
-        print(f"train epoch {epoch}/{args.epochs} loss: {total_loss/training_data.stop_step:.4f} correct: {total_correct} gold count: {total_gold} presicion: {total_correct/total_gold:.4f} rouge score: {rouge_scores/training_data.sents_size:.4f}")
+        logger.info(f"train epoch {epoch}/{args.epochs} loss: {total_loss/training_data.stop_step:.4f} correct: {total_correct} gold count: {total_gold} presicion: {total_correct/total_gold:.4f} rouge score: {rouge_scores/training_data.sents_size:.4f}")
 
         total_loss, total_correct, total_gold, rouge_scores = model.valid(
             validation_data, sess, bert)
-        print(f"valid epoch {epoch}/{args.epochs} loss: {total_loss/validation_data.stop_step:.4f} correct: {total_correct} gold count: {total_gold} presicion: {total_correct/total_gold:.4f} rouge score: {rouge_scores/validation_data.sents_size:.4f}")
+        logger.info(f"valid epoch {epoch}/{args.epochs} loss: {total_loss/validation_data.stop_step:.4f} correct: {total_correct} gold count: {total_gold} presicion: {total_correct/total_gold:.4f} rouge score: {rouge_scores/validation_data.sents_size:.4f}")
 
         score = rouge_scores/validation_data.sents_size
         if score > best_score:
-            print(f"new best presicion score {score:.4f} and save model")
+            logger.info(f"new best presicion score {score:.4f} and save model")
             best_score = score
             saver.save(sess, f"{args.model_path}_{args.cuda_device}/model")

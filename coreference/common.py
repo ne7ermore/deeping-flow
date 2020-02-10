@@ -1,10 +1,31 @@
 import re
 import pickle
+import logging
 
 import tensorflow as tf
 import numpy as np
 
 import const
+
+
+def set_logger(context, verbose=False, useFile=None):
+    logger = logging.getLogger(context)
+    logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+    logger.handlers = []
+
+    formatter = logging.Formatter(
+        '%(levelname)-.1s:' + context + ':[%(filename).5s:%(funcName).3s:%(lineno)3d]:%(message)s', datefmt='%m-%d %H:%M:%S')
+
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
+    if useFile:
+        file_handle = logging.FileHandler(useFile)
+        file_handle.setFormatter(formatter)
+        logger.addHandler(file_handle)
+
+    return logger
 
 
 def get_sinusoid_encoding_table(n_position, d_hid, padding_idx=None):
