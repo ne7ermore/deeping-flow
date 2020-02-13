@@ -135,19 +135,20 @@ class Corpus(object):
         tgt_texts = tgt_texts[index]
         eos_indexs = eos_indexs[index]
 
-        self.src_context_train = src_context[2000:]
-        self.src_texts_train = src_texts[2000:]
-        self.src_turn_train = src_turn[2000:]
-        self.tgt_indexs_train = tgt_indexs[2000:]
-        self.tgt_texts_train = tgt_texts[2000:]
-        self.eos_indexs_train = eos_indexs[2000:]
+        gap = 2000
+        self.src_context_train = src_context[gap:]
+        self.src_texts_train = src_texts[gap:]
+        self.src_turn_train = src_turn[gap:]
+        self.tgt_indexs_train = tgt_indexs[gap:]
+        self.tgt_texts_train = tgt_texts[gap:]
+        self.eos_indexs_train = eos_indexs[gap:]
 
-        self.src_context_test = src_context[2000:]
-        self.src_texts_test = src_texts[:2000]
-        self.src_turn_test = src_turn[:2000]
-        self.tgt_indexs_test = tgt_indexs[:2000]
-        self.tgt_texts_test = tgt_texts[:2000]
-        self.eos_indexs_test = eos_indexs[:2000]
+        self.src_context_test = src_context[:gap]
+        self.src_texts_test = src_texts[:gap]
+        self.src_turn_test = src_turn[:gap]
+        self.tgt_indexs_test = tgt_indexs[:gap]
+        self.tgt_texts_test = tgt_texts[:gap]
+        self.eos_indexs_test = eos_indexs[:gap]
 
     def save(self):
         data = {
