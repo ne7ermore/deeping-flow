@@ -12,6 +12,15 @@
 
 * TensorFlow 1.14
 
+## Distillation
+
+mkdir bert_dir which download Base Bert weights into
+
+## Train Data
+
+If want train data, please contact me
+
+
 ## Quality of Sentence ReWriting
 
 |Precision|F1|
@@ -40,3 +49,19 @@ Utterance5：电影评分84看吗
 
 Utterance5`：电影约会之夜评分84看吗
 ```
+
+## Citation
+If you find this code useful for your research, please cite:
+```
+@misc{TaoDeepingFlow
+  author = {Ne7ermore Tao},
+  title = {deeping-flow},
+  publisher = {GitHub},
+  year = {2020},
+  howpublished = {\url{https://github.com/ne7ermore/deeping-flow/tree/master/coreference}}
+}
+```
+
+## Contact
+Feel free to contact me if there is any question (Tao liaoyuanhuo1987@gmail.com).
+Tao Ne7ermore/ [@ne7ermore](https://github.com/ne7ermore)
