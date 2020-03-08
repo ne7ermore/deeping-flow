@@ -12,21 +12,17 @@ from common import middle_load, middle_save, set_logger
 from data_loader import DataLoader
 from model import Transformer
 from extract_feature import BertVector
-from valid import test
 
 parser = argparse.ArgumentParser(description='poiter network')
 parser.add_argument('--epochs', type=int, default=200)
 parser.add_argument('--pre_epochs', type=int, default=20)
-parser.add_argument('--test_start_epochs', type=int, default=80)
 parser.add_argument('--cuda_device', type=str, default='0')
 parser.add_argument('--batch_size', type=int, default=16)
 parser.add_argument('--seed', type=int, default=1234)
-parser.add_argument('--logdir', type=str,
-                    default='/home/notebook/data/personal/taojian/logdir')
-parser.add_argument('--model_path', type=str,
-                    default='/home/notebook/data/personal/taojian/weights')
+parser.add_argument('--logdir', type=str, default='./logdir')
+parser.add_argument('--model_path', type=str, default='./weights')
 parser.add_argument('--tag', type=str, default='pt')
-parser.add_argument('--data', type=str, default=f'corpus')
+parser.add_argument('--data', type=str, default=f'/data/corpus')
 parser.add_argument('--dropout', type=float, default=0.9)
 parser.add_argument('--d_model', type=int, default=512)
 parser.add_argument('--d_ff', type=int, default=2048)
@@ -100,8 +96,6 @@ with sv.managed_session(config=config) as sess:
     else:
         os.makedirs(
             f"{args.model_path}_{args.tag}_{args.cuda_device}", exist_ok=True)
-        os.makedirs(
-            f"{args.model_path}_best_{args.tag}_{args.cuda_device}", exist_ok=True)
 
         logger = set_logger(colored('poiter network', 'yellow'),
                             usefile=f"{args.model_path}_{args.tag}_{args.cuda_device}/log")
@@ -117,8 +111,6 @@ with sv.managed_session(config=config) as sess:
         }
         middle_save(
             save_data, f"{args.model_path}_{args.tag}_{args.cuda_device}/corpus")
-        os.system(
-            f"cp {args.model_path}_{args.tag}_{args.cuda_device}/corpus {args.model_path}_best_{args.tag}_{args.cuda_device}/")
 
         if args.use_pretrain:
             logger.info("Pretrain...")
@@ -127,10 +119,6 @@ with sv.managed_session(config=config) as sess:
                     training_data, mininterval=1, desc=f'pre-train Processing (loss=X.XXXX)', leave=False)
                 logger.info(
                     f"pre-train epoch {epoch}/{args.pre_epochs} loss: {model.pre_train(training_data_tqdm, sess, bert, training_data.batch_size)/training_data.stop_step:.4f}")
-
-            logger.info("Backup pretrain model")
-            os.system(
-                f"cp -rf {args.logdir}_{args.tag}_{args.cuda_device} {args.logdir}_{args.tag}_{args.cuda_device}_pretrain")
 
         logger.info("Train...")
         for epoch in range(1, args.epochs + 1):
@@ -147,22 +135,5 @@ with sv.managed_session(config=config) as sess:
                 validation_data, mininterval=1, desc='valid Processing (loss=X.XXXX correct=XXX\XXX)', leave=False)
             total_loss, total_correct, total_gold, rouge_scores = model.valid(
                 validation_data_tqdm, sess, bert, validation_data.batch_size)
-            os.system(
-                f"rm {args.model_path}_{args.tag}_{args.cuda_device}/model.*")
-            saver.save(
-                sess, f"{args.model_path}_{args.tag}_{args.cuda_device}/model")
+
             logger.info(f"valid epoch {epoch}/{args.epochs} loss: {total_loss/validation_data.stop_step:.4f} correct: {total_correct} gold count: {total_gold} presicion: {total_correct/total_gold:.4f} rouge score: {rouge_scores/validation_data.sents_size:.4f}")
-
-            if epoch > args.test_start_epochs:
-                cc, pc = test(
-                    f"{args.model_path}_{args.tag}_{args.cuda_device}", best_score, args.data)
-                score = cc / pc
-                logger.info(
-                    f"test epoch {epoch}/{args.epochs} precision: {score:.4f} {cc}/{pc}")
-
-                if score > best_score:
-                    logger.info(
-                        f"new best presicion score {score:.4f} and save model")
-                    best_score = score
-                    os.system(
-                        f"cp {args.model_path}_{args.tag}_{args.cuda_device}/model* {args.model_path}_best_{args.tag}_{args.cuda_device}/")

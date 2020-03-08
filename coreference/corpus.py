@@ -141,7 +141,7 @@ class Corpus(object):
         tgt_texts = tgt_texts[index]
         eos_indexs = eos_indexs[index]
 
-        split_count = 4000
+        split_count = 2000
         self.src_context_train = src_context[split_count:]
         self.tgt_context_train = tgt_context[split_count:]
         self.src_texts_train = src_texts[split_count:]

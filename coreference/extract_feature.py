@@ -43,11 +43,11 @@ class BertVector:
 
     def __init__(self, batch_size=2,
                  max_seq_len=200,
-                 graph_file="model/chinese_bert/graph",
-                 vocab_file="model/chinese_bert/vocab.txt",
-                 output_dir="model/chinese_bert/",
-                 config_name="model/chinese_bert/bert_config.json",
-                 checkpoint_name="model/chinese_bert/bert_model.ckpt"):
+                 graph_file="chinese_bert/graph",
+                 vocab_file="chinese_bert/vocab.txt",
+                 output_dir="chinese_bert/",
+                 config_name="chinese_bert/bert_config.json",
+                 checkpoint_name="chinese_bert/bert_model.ckpt"):
 
         self.max_seq_length = max_seq_len
         self.gpu_memory_fraction = 1
