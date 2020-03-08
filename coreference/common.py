@@ -8,7 +8,7 @@ import numpy as np
 import const
 
 
-def set_logger(context, verbose=False, useFile=None):
+def set_logger(context, verbose=False, usefile=None):
     logger = logging.getLogger(context)
     logger.setLevel(logging.DEBUG if verbose else logging.INFO)
     logger.handlers = []
@@ -20,10 +20,10 @@ def set_logger(context, verbose=False, useFile=None):
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
 
-    if useFile:
-        file_handle = logging.FileHandler(useFile)
-        file_handle.setFormatter(formatter)
-        logger.addHandler(file_handle)
+    if usefile:
+        file_handler = logging.FileHandler(usefile)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
     return logger
 
@@ -72,16 +72,14 @@ def get_subsequent_mask(seq, sz_b, len_s):
 
 def is_chinese_char(c):
     if ((c >= 0x4E00 and c <= 0x9FFF) or
-        (c >= 0x3400 and c <= 0x4DBF) or
-        (c >= 0x20000 and c <= 0x2A6DF) or
-        (c >= 0x2A700 and c <= 0x2B73F) or
-        (c >= 0x2B740 and c <= 0x2B81F) or
-        (c >= 0x2B820 and c <= 0x2CEAF) or
-        (c >= 0xF900 and c <= 0xFAFF) or
+            (c >= 0x3400 and c <= 0x4DBF) or
+            (c >= 0x20000 and c <= 0x2A6DF) or
+            (c >= 0x2A700 and c <= 0x2B73F) or
+            (c >= 0x2B740 and c <= 0x2B81F) or
+            (c >= 0x2B820 and c <= 0x2CEAF) or
+            (c >= 0xF900 and c <= 0xFAFF) or
             (c >= 0x2F800 and c <= 0x2FA1F)):
-
         return True
-
     return False
 
 
@@ -103,10 +101,8 @@ def split_char(text):
                     break
                 un_chinese += text[step]
                 step += 1
-
     if un_chinese:
         return words + [un_chinese.lower()], replaced_words + [const.WORD[const.UNC]]
-
     return words, replaced_words
 
 
@@ -120,7 +116,7 @@ def find_index(text, word):
         idx = text.index(word, stop_index)
     else:
         idx = text.index(word)
-        text[idx] = "@@@"
+    text[idx] = "@@@"
     return idx
 
 
@@ -190,10 +186,55 @@ def rouge_l(evals, refs, eos_idxs):
     return np.asarray(scores, dtype=np.float32).sum()
 
 
-if __name__ == '__main__':
-    # data = np.asarray([[3,4,3,0,1,0],[2,4,1,4,0,0]], dtype=np.int64)
-    # label = np.asarray([[3,4,2,3,9,0],[2,4,2,9,1,0]], dtype=np.int64)
-    # eos_idxs = np.asarray([1, 9], dtype=np.int64)
+def get_reward(y, y_hat, eos_idxs, pos=1., neg=-1.):
+    assert y.shape == y_hat.shape
 
-    # print(rouge_l(data, label, eos_idxs))
-    print(split_char("lg v30详情你看嘛配置详情lgv30配置详情asd"))
+    rewards = np.array([[pos]]*y.shape[0])
+    masks = np.zeros_like(y_hat, dtype=float)
+
+    for idx, (yi, yi_hat, eos) in enumerate(zip(y, y_hat, eos_idxs)):
+        yi = split_by_eos(yi, eos)
+        yi_hat = split_by_eos(yi_hat, eos)
+
+        masks[idx, :len(yi)] = 1.
+        if len(yi) != len(yi_hat) or (yi != yi_hat).any():
+            rewards[idx][0] = neg
+
+    return rewards, masks, pos
+
+
+def rouge2(y, label):
+    if len(y) == 0 or len(label) == 0:
+        return 0
+
+    if len(y) == 1:
+        return int(y[0] == label[0])
+
+    r2 = {(label[i-1], label[i]) for i in range(1, len(label))}
+    return sum([(y[i-1], y[i]) in r2 for i in range(1, len(y))]) / (len(y)-1)
+
+
+def rouge2_reward(y, teacher_forcing, label, eos_idxs):
+    assert y.shape == label.shape
+
+    rewards = []
+    masks = np.zeros_like(y, dtype=float)
+
+    for idx, (yi, ft, yi_hat, eos) in enumerate(zip(y, teacher_forcing, label, eos_idxs)):
+        yi = split_by_eos(yi, eos)
+        yi_hat = split_by_eos(yi_hat, eos)
+        ft = split_by_eos(ft, eos)
+
+        rewards.append(rouge2(ft, yi_hat)-rouge2(yi, yi_hat))
+        masks[idx, :len(yi)] = 1.
+
+    return np.array(rewards), masks
+
+
+def check_result(y, label, eos_idxs):
+    def check(yi, yi_hat, eos):
+        yi = split_by_eos(yi, eos)
+        yi_hat = split_by_eos(yi_hat, eos)
+        return len(yi) == len(yi_hat) and (yi == yi_hat).all()
+
+    return sum([check(yi, yi_hat, eos) for yi, yi_hat, eos in zip(y, label, eos_idxs)])

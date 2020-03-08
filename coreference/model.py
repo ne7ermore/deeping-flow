@@ -44,8 +44,11 @@ class Transformer:
             self.pre_enc_output = tf.compat.v1.placeholder(
                 tf.float32, [None, None, args.d_model], name="pre_enc_output")
 
+            # distillation
             self.dist_encode = tf.compat.v1.placeholder(
                 tf.float32, [None, None, args.dist_model], name="dist_encode")
+            self.dist_decode = tf.compat.v1.placeholder(
+                tf.float32, [None, None, args.dist_model], name="dist_decode")
 
         with tf.compat.v1.variable_scope('init_embedding'):
             self.turn_embedding = get_token_embeddings(
@@ -55,34 +58,43 @@ class Transformer:
             self.pos_embedding = get_token_embeddings(
                 args.max_context_len, args.d_model, "pos_embedding", common.get_sinusoid_encoding_table)
 
-        enc_output = self.encode(self.src_tensor,
-                                 self.src_postion,
-                                 self.turns_tensor,
-                                 self.src_max_len)
-
-        enc_output, self.distill_loss = self.distillation(
-            enc_output, self.dist_encode)
-        self.pre_train_op = tf.compat.v1.train.AdamOptimizer(
-            args.learning_rate).minimize(self.distill_loss, global_step=self.global_step)
+        enc_output, non_pad_mask = self.encode(self.src_tensor,
+                                               self.src_postion,
+                                               self.turns_tensor,
+                                               self.src_max_len)
+        enc_output, enc_distill_loss = self.distillation(
+            enc_output, self.dist_encode*non_pad_mask, "encode_distillation")
+        enc_output *= non_pad_mask
         self.enc_output = tf.identity(enc_output, "enc_output")
 
-        distributes, _ = self.decode(self.tgt_tensor,
-                                     self.tgt_max_len,
-                                     self.src_tensor,
-                                     self.enc_output)
+        # train
+        dec_output, non_pad_mask = self.decode(
+            self.tgt_tensor, self.tgt_postion, self.tgt_max_len, self.src_tensor, enc_output)
+        dec_output, dec_distill_loss = self.distillation(
+            dec_output*non_pad_mask, self.dist_decode*non_pad_mask, "decode_distillation")
+        dec_output *= non_pad_mask
+        distributes, props = self.pointer_network(enc_output, dec_output)
         self.distributes = tf.identity(distributes, "distributes")
 
-        pre_distributes, _ = self.decode(self.tgt_tensor,
-                                         self.tgt_max_len,
-                                         self.src_tensor,
-                                         self.pre_enc_output)
+        # predict
+        pre_dec_output, pre_non_pad_mask = self.decode(
+            self.tgt_tensor, self.tgt_postion, self.tgt_max_len, self.src_tensor, self.pre_enc_output)
+        pre_dec_output, _ = self.distillation(
+            pre_dec_output*pre_non_pad_mask, self.dist_decode*pre_non_pad_mask, "decode_distillation")
+        pre_dec_output *= pre_non_pad_mask
+        pre_distributes, _ = self.pointer_network(
+            self.pre_enc_output, pre_dec_output)
         self.pre_distributes = tf.identity(pre_distributes, "pre_distributes")
 
         entropy_loss = self._cross_entropy()
 
+        self.distill_loss = args.dist_encode_rate*enc_distill_loss + \
+            (1-args.dist_encode_rate)*dec_distill_loss
         self.loss = self.distill_loss * args.dist_rate + \
             entropy_loss * (1 - args.dist_rate)
 
+        self.pre_train_op = tf.compat.v1.train.AdamOptimizer(
+            args.pretrain_lr).minimize(self.distill_loss, global_step=self.global_step)
         self.train_op = tf.compat.v1.train.AdamOptimizer(
             args.learning_rate).minimize(self.loss, global_step=self.global_step)
 
@@ -127,29 +139,33 @@ class Transformer:
                                                args.d_model, args.d_ff, self.dropout_rate, self.initializer)
                     enc_output *= non_pad_mask
 
-        return enc_output
+        return enc_output, non_pad_mask
 
-    def distillation(self, enc_output, dist_encode):
+    def distillation(self, output, dist, scope):
         args = self.args
 
-        with tf.compat.v1.variable_scope("distillation", reuse=tf.compat.v1.AUTO_REUSE):
-            enc_output = tf.layers.dense(
-                enc_output, args.dist_model, kernel_initializer=self.initializer)
-            distill_loss = tf.losses.mean_squared_error(
-                dist_encode, enc_output)
-            enc_output = tf.layers.dense(
-                enc_output, args.d_model, kernel_initializer=self.initializer)
+        with tf.compat.v1.variable_scope(scope, reuse=tf.compat.v1.AUTO_REUSE):
+            output = tf.layers.dense(
+                output, args.dist_model, kernel_initializer=self.initializer)
+            distill_loss = tf.losses.mean_squared_error(dist, output)
+            output = tf.layers.dense(
+                output, args.d_model, kernel_initializer=self.initializer)
+            output = tf.nn.dropout(output, keep_prob=self.dropout_rate)
 
-        return enc_output, distill_loss
+        return output, distill_loss
 
-    def decode(self, tgt_tensor, tgt_max_len, src_tensor, enc_output):
+    def decode(self, tgt_tensor, tgt_postion, tgt_max_len, src_tensor, enc_output):
         args = self.args
 
         with tf.compat.v1.variable_scope("decode", reuse=tf.compat.v1.AUTO_REUSE):
-            # decode embedding
+
             dec_output = tf.nn.embedding_lookup(
                 self.word_embedding, tgt_tensor)
             dec_output *= args.d_model**0.5
+
+            dec_output += tf.nn.embedding_lookup(
+                self.pos_embedding, tgt_postion)
+
             dec_output = tf.nn.dropout(dec_output, keep_prob=self.dropout_rate)
 
             # decode mask
@@ -163,9 +179,8 @@ class Transformer:
             dec_enc_attn_mask = common.get_attn_key_pad_mask(
                 src_tensor, tgt_tensor, tgt_max_len)
 
-            # decode
             for i in range(args.dec_stack_layers):
-                with tf.compat.v1.variable_scope("num_blocks_{}".format(i), reuse=tf.compat.v1.AUTO_REUSE):
+                with tf.compat.v1.variable_scope(f"num_blocks_{i}", reuse=tf.compat.v1.AUTO_REUSE):
                     dec_output, dec_slf_attn = multi_head_attention(dec_output,
                                                                     dec_output,
                                                                     dec_output,
@@ -197,30 +212,33 @@ class Transformer:
                         dec_output, args.d_model, args.d_ff, self.dropout_rate, self.initializer)
                     dec_output *= non_pad_mask
 
-                    dec_output = m_dec_output
+            dec_output = m_dec_output
+
+        return dec_output, non_pad_mask
+
+    def pointer_network(self, enc_output, dec_output):
+        args = self.args
 
         with tf.compat.v1.variable_scope("pointer", reuse=tf.compat.v1.AUTO_REUSE):
+
             last_enc_output = tf.layers.dense(
                 enc_output, args.d_model, use_bias=False, kernel_initializer=self.initializer)  # bsz slen dim
             last_enc_output = tf.expand_dims(
-                last_enc_output, 0)  # 1 bsz slen dim
+                last_enc_output, 1)  # bsz 1 slen dim
 
-            dec_output_trans = tf.transpose(
-                dec_output, [1, 0, 2])  # tlen bsz dim
-            dec_output_trans = tf.layers.dense(dec_output_trans, args.d_model, kernel_initializer=self.initializer,
-                                               use_bias=False, name="pointer_decode", reuse=tf.compat.v1.AUTO_REUSE)  # tlen bsz dim
-            dec_output_trans = tf.expand_dims(
-                dec_output_trans, 2)  # tlen bsz 1 dim
+            dec_output = tf.layers.dense(
+                dec_output, args.d_model, use_bias=False, kernel_initializer=self.initializer)  # bsz tlen dim
+            dec_output = tf.expand_dims(dec_output, 2)  # bsz tlen 1 dim
 
             attn_encode = tf.nn.tanh(
-                dec_output_trans + last_enc_output)  # tlen bsz slen dim
-            attn_encode = tf.layers.dense(attn_encode, 1, kernel_initializer=self.initializer,
-                                          use_bias=False, name="pointer_v", reuse=tf.compat.v1.AUTO_REUSE)  # tlen bsz slen 1
-            attn_encode = tf.transpose(tf.squeeze(attn_encode, 3), [
-                1, 0, 2])  # bsz tlen slen
+                dec_output + last_enc_output)  # bsz tlen slen dim
+            attn_encode = tf.layers.dense(
+                attn_encode, 1, use_bias=False, kernel_initializer=self.initializer)  # bsz tlen slen 1
+            attn_encode = tf.nn.dropout(tf.squeeze(
+                attn_encode, 3), keep_prob=self.dropout_rate)  # bsz tlen slen
             distributes = tf.nn.log_softmax(attn_encode, axis=-1)+1e-9
 
-        return distributes, dec_output
+        return distributes, attn_encode
 
     def _cross_entropy(self):
 
@@ -235,35 +253,51 @@ class Transformer:
 
         return tf.reduce_sum(loss * nonpadding) / (tf.reduce_sum(nonpadding) + 1e-9)
 
-    def pre_train(self, training_data, sess, bert):
+    def bert_vecs(self, src_context, tgt_context, bert, tgt_max_len):
+        src_tgt_context = np.asarray(
+            [f"{t}{const.SPLIT}{s}" for s, t in zip(src_context, tgt_context)])
+        _, dec_vecs = bert.encode(src_tgt_context)
+        _, enc_vecs = bert.encode(src_context)
+
+        return enc_vecs, dec_vecs[:, :tgt_max_len]
+
+    def pre_train(self, training_data, sess, bert, batch_size):
         total_loss = 0
-        for (src_tensor, src_postion, turns_tensor), (tgt_tensor, tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context in tqdm(training_data, mininterval=1, desc='train Processing', leave=False):
-            _, vecs = bert.encode(src_context)
+        for (src_tensor, src_postion, turns_tensor), (tgt_tensor, tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context, tgt_context in training_data:
+            enc_vecs, dec_vecs = self.bert_vecs(
+                src_context, tgt_context, bert, tgt_max_len)
 
             feed_dict = {
                 self.src_max_len: src_max_len,
-                self.batch_size: training_data.batch_size,
+                self.batch_size: batch_size,
+                self.tgt_max_len: tgt_max_len,
                 self.src_tensor: src_tensor,
                 self.src_postion: src_postion,
                 self.turns_tensor: turns_tensor,
+                self.tgt_tensor: tgt_tensor,
+                self.tgt_postion: tgt_postion,
                 self.dropout_rate: self.args.dropout,
-                self.dist_encode: vecs,
+                self.dist_encode: enc_vecs,
+                self.dist_decode: dec_vecs,
             }
 
             _, step, loss = sess.run(
                 [self.global_step, self.pre_train_op, self.distill_loss], feed_dict)
             total_loss += loss
+            training_data.set_description(
+                f"pre-train Processing  (loss={loss:.4f})")
 
         return total_loss
 
-    def train(self, training_data, sess, bert):
+    def train(self, training_data, sess, bert, batch_size):
         total_loss = total_correct = total_gold = rouge_scores = 0
-        for (src_tensor, src_postion, turns_tensor), (tgt_tensor, tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context in tqdm(training_data, mininterval=1, desc='train Processing', leave=False):
-            _, vecs = bert.encode(src_context)
+        for (src_tensor, src_postion, turns_tensor), (tgt_tensor, tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context, tgt_context in training_data:
+            enc_vecs, dec_vecs = self.bert_vecs(
+                src_context, tgt_context, bert, tgt_max_len)
 
             feed_dict = {
                 self.src_max_len: src_max_len,
-                self.batch_size: training_data.batch_size,
+                self.batch_size: batch_size,
                 self.tgt_max_len: tgt_max_len,
                 self.src_tensor: src_tensor,
                 self.src_postion: src_postion,
@@ -272,7 +306,8 @@ class Transformer:
                 self.tgt_postion: tgt_postion,
                 self.tgt_indexs_tensor: tgt_indexs_tensor,
                 self.dropout_rate: self.args.dropout,
-                self.dist_encode: vecs,
+                self.dist_encode: enc_vecs,
+                self.dist_decode: dec_vecs,
             }
 
             _, step, loss, distributes = sess.run(
@@ -290,17 +325,20 @@ class Transformer:
             total_gold += n_gold
             rouge_scores += rouge_score
 
+            training_data.set_description(
+                f"train Processing  (loss={loss:.4f} correct={n_correct}/{n_gold})")
+
         return total_loss, total_correct, total_gold, rouge_scores
 
-    def valid(self, validation_data, sess, bert):
+    def valid(self, validation_data, sess, bert, batch_size):
         total_loss = total_correct = total_gold = rouge_scores = 0
-        for (src_tensor, src_postion, turns_tensor), (tgt_tensor, tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context in tqdm(validation_data, mininterval=1, desc='valid Processing', leave=False):
-
-            _, vecs = bert.encode(src_context)
+        for (src_tensor, src_postion, turns_tensor), (tgt_tensor, tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context, tgt_context in validation_data:
+            enc_vecs, dec_vecs = self.bert_vecs(
+                src_context, tgt_context, bert, tgt_max_len)
 
             feed_dict = {
                 self.src_tensor: src_tensor,
-                self.batch_size: validation_data.batch_size,
+                self.batch_size: batch_size,
                 self.tgt_max_len: tgt_max_len,
                 self.src_postion: src_postion,
                 self.turns_tensor: turns_tensor,
@@ -309,7 +347,8 @@ class Transformer:
                 self.tgt_indexs_tensor: tgt_indexs_tensor,
                 self.src_max_len: src_max_len,
                 self.dropout_rate: 1.,
-                self.dist_encode: vecs,
+                self.dist_encode: enc_vecs,
+                self.dist_decode: dec_vecs,
             }
 
             _, loss, distributes = sess.run(
@@ -327,4 +366,29 @@ class Transformer:
             total_gold += n_gold
             rouge_scores += rouge_score
 
+            validation_data.set_description(
+                f"valid Processing  (loss={loss:.4f} correct={n_correct}/{n_gold})")
+
         return total_loss, total_correct, total_gold, rouge_scores
+
+    def debug(self, training_data, sess, bert):
+        (src_tensor, src_postion, turns_tensor), (tgt_tensor,
+                                                  tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context, tgt_context = next(training_data)
+        enc_vecs, dec_vecs = self.bert_vecs(
+            src_context, tgt_context, bert, tgt_max_len)
+
+        feed_dict = {
+            self.src_max_len: src_max_len,
+            self.batch_size: training_data.batch_size,
+            self.tgt_max_len: tgt_max_len,
+            self.src_tensor: src_tensor,
+            self.src_postion: src_postion,
+            self.turns_tensor: turns_tensor,
+            self.tgt_tensor: tgt_tensor,
+            self.tgt_postion: tgt_postion,
+            self.tgt_indexs_tensor: tgt_indexs_tensor,
+            self.dropout_rate: self.args.dropout,
+        }
+
+        _, distributes = sess.run(
+            [self.global_step, self.distributes], feed_dict)

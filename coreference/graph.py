@@ -1,6 +1,5 @@
 import json
 from termcolor import colored
-
 import modeling
 import tensorflow as tf
 import os
@@ -10,21 +9,19 @@ from common import set_logger
 
 def optimize_graph(output_dir, config_name, max_seq_len, checkpoint_name, graph_file, logger=None, verbose=False):
     if not logger:
-        logger = set_logger(colored('BERT_VEC', 'yellow'), verbose)
+        logger = set_logger(colored('BERT_VEC', 'yellow'), verbose=verbose)
     try:
-        # we don't need GPU for optimizing the graph
         from tensorflow.python.tools.optimize_for_inference_lib import optimize_for_inference
         tf.gfile.MakeDirs(output_dir)
 
         config_fp = config_name
         logger.info('model config: %s' % config_fp)
 
-        # 加载bert配置文件
         with tf.gfile.GFile(config_fp, 'r') as f:
             bert_config = modeling.BertConfig.from_dict(json.load(f))
 
         logger.info('build graph...')
-        # input placeholders, not sure if they are friendly to XLA
+
         input_ids = tf.placeholder(tf.int32, (None, max_seq_len), 'input_ids')
         input_mask = tf.placeholder(
             tf.int32, (None, max_seq_len), 'input_mask')
@@ -45,7 +42,7 @@ def optimize_graph(output_dir, config_name, max_seq_len, checkpoint_name, graph_
                 use_one_hot_embeddings=False)
 
             tvars = tf.trainable_variables()
-            (assignment_map, _) = modeling.get_assignment_map_from_checkpoint(
+            (assignment_map, initialized_variable_names) = modeling.get_assignment_map_from_checkpoint(
                 tvars, checkpoint_name)
             tf.train.init_from_checkpoint(checkpoint_name, assignment_map)
 

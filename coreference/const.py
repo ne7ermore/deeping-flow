@@ -1,4 +1,4 @@
-DATAPATH = "data"
+DATAPATH = "."
 
 PAD = 0
 UNK = 1
@@ -15,3 +15,6 @@ WORD = {
 }
 
 INIT_RANGE = 0.02
+NORM_INIT_STD = 1e-4
+
+SPLIT = '@@^^'

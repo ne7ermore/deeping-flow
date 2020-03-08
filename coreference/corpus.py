@@ -52,7 +52,8 @@ class Corpus(object):
 
     def parse(self):
         def parse_file(inf):
-            src_texts, src_turn, tgt_indexs, tgt_texts, eos_indexs, src_contexts = [], [], [], [], [], []
+            src_texts, src_turn, tgt_indexs, tgt_texts, eos_indexs, src_contexts, tgt_contexts = [
+            ], [], [], [], [], [], []
             with open(inf, encoding="utf8") as contexts:
                 for line in contexts:
                     contexts = line.strip().split("\t")
@@ -93,6 +94,7 @@ class Corpus(object):
 
                     # 保存
                     # step 1 - 替换后的q
+                    src_contexts.append("".join(replaced_qs))
                     replaced_qs += [WORD[PAD]] * \
                         (self.max_len-len(replaced_qs))
                     turns += [PAD] * (self.max_len-len(turns))
@@ -100,22 +102,26 @@ class Corpus(object):
                     src_texts.append(replaced_qs)
                     src_turn.append(turns)
 
+                    # step 2 - 截止符位置
                     eos_indexs.append(eos_index)
 
+                    # step 3 - tgt
                     tgt_texts.append(([WORD[BOS]]+replaced_new_tgt_words))
+                    tgt_contexts.append(
+                        "".join([WORD[BOS]]+replaced_new_tgt_words))
 
+                    # step 4 - index
                     tgt_indexs.append(t_index)
 
-                    src_contexts.append("".join(replaced_qs))
+            return src_texts, src_turn, tgt_indexs, tgt_texts, eos_indexs, src_contexts, tgt_contexts
 
-            return src_texts, src_turn, tgt_indexs, tgt_texts, eos_indexs, src_contexts
-
-        src_texts, src_turn, tgt_indexs, tgt_texts, eos_indexs, src_context = parse_file(
+        src_texts, src_turn, tgt_indexs, tgt_texts, eos_indexs, src_context, tgt_context = parse_file(
             f"{DATAPATH}/data")
         print(
             f"Ignored word counts - {self.dict(src_texts, self.min_word_count)}")
 
         src_context = np.asarray(src_context)
+        tgt_context = np.asarray(tgt_context)
         src_texts = np.asarray(common.texts2idx(src_texts, self.dict.word2idx))
         src_turn = np.asarray(src_turn)
         tgt_indexs = np.asarray(tgt_indexs)
@@ -127,28 +133,30 @@ class Corpus(object):
 
         index = np.arange(tgt_texts.shape[0])
         np.random.shuffle(index)
-
         src_context = src_context[index]
+        tgt_context = tgt_context[index]
         src_texts = src_texts[index]
         src_turn = src_turn[index]
         tgt_indexs = tgt_indexs[index]
         tgt_texts = tgt_texts[index]
         eos_indexs = eos_indexs[index]
 
-        gap = 2000
-        self.src_context_train = src_context[gap:]
-        self.src_texts_train = src_texts[gap:]
-        self.src_turn_train = src_turn[gap:]
-        self.tgt_indexs_train = tgt_indexs[gap:]
-        self.tgt_texts_train = tgt_texts[gap:]
-        self.eos_indexs_train = eos_indexs[gap:]
+        split_count = 4000
+        self.src_context_train = src_context[split_count:]
+        self.tgt_context_train = tgt_context[split_count:]
+        self.src_texts_train = src_texts[split_count:]
+        self.src_turn_train = src_turn[split_count:]
+        self.tgt_indexs_train = tgt_indexs[split_count:]
+        self.tgt_texts_train = tgt_texts[split_count:]
+        self.eos_indexs_train = eos_indexs[split_count:]
 
-        self.src_context_test = src_context[:gap]
-        self.src_texts_test = src_texts[:gap]
-        self.src_turn_test = src_turn[:gap]
-        self.tgt_indexs_test = tgt_indexs[:gap]
-        self.tgt_texts_test = tgt_texts[:gap]
-        self.eos_indexs_test = eos_indexs[:gap]
+        self.src_context_test = src_context[:split_count]
+        self.tgt_context_test = tgt_context[:split_count]
+        self.src_texts_test = src_texts[:split_count]
+        self.src_turn_test = src_turn[:split_count]
+        self.tgt_indexs_test = tgt_indexs[:split_count]
+        self.tgt_texts_test = tgt_texts[:split_count]
+        self.eos_indexs_test = eos_indexs[:split_count]
 
     def save(self):
         data = {
@@ -156,6 +164,7 @@ class Corpus(object):
             'max_len':  self.max_len,
             'train': {
                 'src_context': self.src_context_train,
+                'tgt_context': self.tgt_context_train,
                 'src_texts': self.src_texts_train,
                 'src_turn': self.src_turn_train,
                 'tgt_indexs': self.tgt_indexs_train,
@@ -164,6 +173,7 @@ class Corpus(object):
             },
             'valid': {
                 'src_context': self.src_context_test,
+                'tgt_context': self.tgt_context_test,
                 'src_texts': self.src_texts_test,
                 'src_turn': self.src_turn_test,
                 'tgt_indexs': self.tgt_indexs_test,
@@ -171,7 +181,6 @@ class Corpus(object):
                 'eos_indexs':  self.eos_indexs_test,
             }
         }
-
         common.middle_save(data, self._save_data)
         print(f'corpora length - {len(self.dict)}')
 

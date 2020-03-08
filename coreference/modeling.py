@@ -44,6 +44,7 @@ class BertConfig(object):
                  type_vocab_size=16,
                  initializer_range=0.02):
         """Constructs BertConfig.
+
         Args:
           vocab_size: Vocabulary size of `inputs_ids` in `BertModel`.
           hidden_size: Size of the encoder layers and the pooler layer.
@@ -105,16 +106,21 @@ class BertConfig(object):
 
 class BertModel(object):
     """BERT model ("Bidirectional Encoder Representations from Transformers").
+
     Example usage:
+
     ```python
     # Already been converted into WordPiece token ids
     input_ids = tf.constant([[31, 51, 99], [15, 5, 0]])
     input_mask = tf.constant([[1, 1, 1], [1, 1, 0]])
     token_type_ids = tf.constant([[0, 0, 1], [0, 2, 0]])
+
     config = modeling.BertConfig(vocab_size=32000, hidden_size=512,
       num_hidden_layers=8, num_attention_heads=6, intermediate_size=1024)
+
     model = modeling.BertModel(config=config, is_training=True,
       input_ids=input_ids, input_mask=input_mask, token_type_ids=token_type_ids)
+
     label_embeddings = tf.get_variable(...)
     pooled_output = model.get_pooled_output()
     logits = tf.matmul(pooled_output, label_embeddings)
@@ -131,6 +137,7 @@ class BertModel(object):
                  use_one_hot_embeddings=False,
                  scope=None):
         """Constructor for BertModel.
+
         Args:
           config: `BertConfig` instance.
           is_training: bool. true for training model, false for eval model. Controls
@@ -141,6 +148,7 @@ class BertModel(object):
           use_one_hot_embeddings: (optional) bool. Whether to use one-hot word
             embeddings or tf.embedding_lookup() for the word embeddings.
           scope: (optional) variable scope. Defaults to "bert".
+
         Raises:
           ValueError: The config is invalid or one of the input tensor shapes
             is invalid.
@@ -231,6 +239,7 @@ class BertModel(object):
 
     def get_sequence_output(self):
         """Gets final hidden layer of encoder.
+
         Returns:
           float Tensor of shape [batch_size, seq_length, hidden_size] corresponding
           to the final hidden of the transformer encoder.
@@ -242,6 +251,7 @@ class BertModel(object):
 
     def get_embedding_output(self):
         """Gets output of the embedding lookup (i.e., input to the transformer).
+
         Returns:
           float Tensor of shape [batch_size, seq_length, hidden_size] corresponding
           to the output of the embedding layer, after summing the word
@@ -256,10 +266,12 @@ class BertModel(object):
 
 def gelu(x):
     """Gaussian Error Linear Unit.
+
     This is a smoother version of the RELU.
     Original paper: https://arxiv.org/abs/1606.08415
     Args:
       x: float Tensor to perform activation.
+
     Returns:
       `x` with the GELU activation applied.
     """
@@ -270,12 +282,15 @@ def gelu(x):
 
 def get_activation(activation_string):
     """Maps a string to a Python function, e.g., "relu" => `tf.nn.relu`.
+
     Args:
       activation_string: String name of the activation function.
+
     Returns:
       A Python function corresponding to the activation function. If
       `activation_string` is None, empty, or "linear", this will return None.
       If `activation_string` is not a string, it will return `activation_string`.
+
     Raises:
       ValueError: The `activation_string` does not correspond to a known
         activation.
@@ -331,10 +346,12 @@ def get_assignment_map_from_checkpoint(tvars, init_checkpoint):
 
 def dropout(input_tensor, dropout_prob):
     """Perform dropout.
+
     Args:
       input_tensor: float Tensor.
       dropout_prob: Python float. The probability of dropping out a value (NOT of
         *keeping* a dimension as in `tf.nn.dropout`).
+
     Returns:
       A version of `input_tensor` with dropout applied.
     """
@@ -370,6 +387,7 @@ def embedding_lookup(input_ids,
                      word_embedding_name="word_embeddings",
                      use_one_hot_embeddings=False):
     """Looks up words embeddings for id tensor.
+
     Args:
       input_ids: int32 Tensor of shape [batch_size, seq_length] containing word
         ids.
@@ -379,6 +397,7 @@ def embedding_lookup(input_ids,
       word_embedding_name: string. Name of the embedding table.
       use_one_hot_embeddings: bool. If True, use one-hot method for word
         embeddings. If False, use `tf.gather()`.
+
     Returns:
       float Tensor of shape [batch_size, seq_length, embedding_size].
     """
@@ -420,6 +439,7 @@ def embedding_postprocessor(input_tensor,
                             max_position_embeddings=512,
                             dropout_prob=0.1):
     """Performs various post-processing on a word embedding tensor.
+
     Args:
       input_tensor: float Tensor of shape [batch_size, seq_length,
         embedding_size].
@@ -438,8 +458,10 @@ def embedding_postprocessor(input_tensor,
         used with this model. This can be longer than the sequence length of
         input_tensor, but cannot be shorter.
       dropout_prob: float. Dropout probability applied to the final output tensor.
+
     Returns:
       float tensor with same shape as `input_tensor`.
+
     Raises:
       ValueError: One of the tensor shapes or input values is invalid.
     """
@@ -484,8 +506,8 @@ def embedding_postprocessor(input_tensor,
             # for position [0, 1, 2, ..., max_position_embeddings-1], and the current
             # sequence has positions [0, 1, 2, ... seq_length-1], so we can just
             # perform a slice.
-            position_embeddings = tf.slice(full_position_embeddings, [0, 0],
-                                           [seq_length, -1])
+            position_embeddings = tf.slice(full_position_embeddings, [
+                                           0, 0], [seq_length, -1])
             num_dims = len(output.shape.as_list())
 
             # Only the last two dimensions are relevant (`seq_length` and `width`), so
@@ -505,9 +527,11 @@ def embedding_postprocessor(input_tensor,
 
 def create_attention_mask_from_input_mask(from_tensor, to_mask):
     """Create 3D attention mask from a 2D tensor mask.
+
     Args:
       from_tensor: 2D or 3D Tensor of shape [batch_size, from_seq_length, ...].
       to_mask: int32 Tensor of shape [batch_size, to_seq_length].
+
     Returns:
       float Tensor of shape [batch_size, from_seq_length, to_seq_length].
     """
@@ -550,20 +574,25 @@ def attention_layer(from_tensor,
                     from_seq_length=None,
                     to_seq_length=None):
     """Performs multi-headed attention from `from_tensor` to `to_tensor`.
+
     This is an implementation of multi-headed attention based on "Attention
     is all you Need". If `from_tensor` and `to_tensor` are the same, then
     this is self-attention. Each timestep in `from_tensor` attends to the
     corresponding sequence in `to_tensor`, and returns a fixed-with vector.
+
     This function first projects `from_tensor` into a "query" tensor and
     `to_tensor` into "key" and "value" tensors. These are (effectively) a list
     of tensors of length `num_attention_heads`, where each tensor is of shape
     [batch_size, seq_length, size_per_head].
+
     Then, the query and key tensors are dot-producted and scaled. These are
     softmaxed to obtain attention probabilities. The value tensors are then
     interpolated by these probabilities, then concatenated back to a single
     tensor and returned.
+
     In practice, the multi-headed attention are done with transposes and
     reshapes rather than actual separate tensors.
+
     Args:
       from_tensor: float Tensor of shape [batch_size, from_seq_length,
         from_width].
@@ -590,11 +619,13 @@ def attention_layer(from_tensor,
         of the 3D version of the `from_tensor`.
       to_seq_length: (Optional) If the input is 2D, this might be the seq length
         of the 3D version of the `to_tensor`.
+
     Returns:
       float Tensor of shape [batch_size, from_seq_length,
         num_attention_heads * size_per_head]. (If `do_return_2d_tensor` is
         true, this will be of shape [batch_size * from_seq_length,
         num_attention_heads * size_per_head]).
+
     Raises:
       ValueError: Any of the arguments or tensor shapes are invalid.
     """
@@ -736,11 +767,15 @@ def transformer_model(input_tensor,
                       initializer_range=0.02,
                       do_return_all_layers=False):
     """Multi-headed, multi-layer Transformer from "Attention is All You Need".
+
     This is almost an exact implementation of the original Transformer encoder.
+
     See the original paper:
     https://arxiv.org/abs/1706.03762
+
     Also see:
     https://github.com/tensorflow/tensor2tensor/blob/master/tensor2tensor/models/transformer.py
+
     Args:
       input_tensor: float Tensor of shape [batch_size, seq_length, hidden_size].
       attention_mask: (optional) int32 Tensor of shape [batch_size, seq_length,
@@ -760,9 +795,11 @@ def transformer_model(input_tensor,
         normal).
       do_return_all_layers: Whether to also return all layers or just the final
         layer.
+
     Returns:
       float Tensor of shape [batch_size, seq_length, hidden_size], the final
       hidden layer of the Transformer.
+
     Raises:
       ValueError: A Tensor shape or parameter is invalid.
     """
@@ -863,12 +900,14 @@ def transformer_model(input_tensor,
 
 def get_shape_list(tensor, expected_rank=None, name=None):
     """Returns a list of the shape of tensor, preferring static dimensions.
+
     Args:
       tensor: A tf.Tensor object to find the shape of.
       expected_rank: (optional) int. The expected rank of `tensor`. If this is
         specified and the `tensor` has a different rank, and exception will be
         thrown.
       name: Optional name of the tensor for the error message.
+
     Returns:
       A list of dimensions of the shape of tensor. All static dimensions will
       be returned as python integers, and dynamic dimensions will be returned
@@ -925,10 +964,12 @@ def reshape_from_matrix(output_tensor, orig_shape_list):
 
 def assert_rank(tensor, expected_rank, name=None):
     """Raises an exception if the tensor rank is not of the expected rank.
+
     Args:
       tensor: A tf.Tensor to check the rank of.
       expected_rank: Python integer or list of integers, expected rank.
       name: Optional name of the tensor for the error message.
+
     Raises:
       ValueError: If the expected shape doesn't match the actual shape.
     """

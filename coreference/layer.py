@@ -1,6 +1,8 @@
 import numpy as np
 import tensorflow as tf
 
+import const
+
 
 def layer_norm(input_tensor, name=None):
     return tf.contrib.layers.layer_norm(
@@ -17,9 +19,9 @@ def get_token_embeddings(vocab_size, num_units, scope, init_func=None):
                                                    dtype=tf.float32,
                                                    shape=(
                                                        vocab_size, num_units),
-                                                   initializer=tf.contrib.layers.xavier_initializer())
+                                                   initializer=tf.truncated_normal_initializer(stddev=const.NORM_INIT_STD))
 
-        return tf.concat((tf.zeros(shape=[1, num_units]), embeddings[1:, :]), 0)
+    return tf.concat((tf.zeros(shape=[1, num_units]), embeddings[1:, :]), 0)
 
 
 def scaled_dot_product_attention(q, k, v, d_k, mask, dropout_rate,
@@ -41,7 +43,6 @@ def multi_head_attention(q, k, v, mask, n_head, d_model, d_k, d_v, dropout_rate,
                          scope="multi_head_attention"):
 
     with tf.compat.v1.variable_scope(scope, reuse=tf.compat.v1.AUTO_REUSE):
-
         residual = q
 
         q = layer_norm(q)
@@ -67,26 +68,22 @@ def multi_head_attention(q, k, v, mask, n_head, d_model, d_k, d_v, dropout_rate,
 
         output = output + residual
 
-    return output, attn
+        return output, attn
 
 
 def position_wise(inputs, d_model, d_ff, dropout_rate, initializer, scope="position_wise"):
 
     with tf.compat.v1.variable_scope(scope, reuse=tf.compat.v1.AUTO_REUSE):
-
         residual = inputs
 
         inputs = layer_norm(inputs)
 
         outputs = tf.layers.dense(
             inputs, d_ff, activation=tf.nn.relu, kernel_initializer=initializer)
-
         outputs = tf.layers.dense(
             outputs, d_model, kernel_initializer=initializer)
-
         outputs = tf.nn.dropout(outputs, keep_prob=dropout_rate)
-
-        outputs = outputs + residual
+        outputs = outputs+residual
 
     return outputs
 

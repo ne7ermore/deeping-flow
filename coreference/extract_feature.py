@@ -6,14 +6,15 @@ from threading import Thread
 import tensorflow as tf
 import os
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+import const
 
 
 class InputExample(object):
 
-    def __init__(self, unique_id, text_a):
+    def __init__(self, unique_id, text_a, text_b=None):
         self.unique_id = unique_id
         self.text_a = text_a
+        self.text_b = text_b
 
 
 class InputFeatures(object):
@@ -27,15 +28,26 @@ class InputFeatures(object):
         self.input_type_ids = input_type_ids
 
 
+def _truncate_seq_pair(tokens_a, tokens_b, max_length):
+    while True:
+        total_length = len(tokens_a) + len(tokens_b)
+        if total_length <= max_length:
+            break
+        if len(tokens_a) > len(tokens_b):
+            tokens_a.pop()
+        else:
+            tokens_b.pop()
+
+
 class BertVector:
 
     def __init__(self, batch_size=2,
-                 max_seq_len=184,
-                 graph_file="./chinese_bert/graph",
-                 vocab_file="/home/notebook/data/personal/model/chinese_bert/vocab.txt",
-                 output_dir="/home/notebook/data/personal/model/chinese_bert/",
-                 config_name="/home/notebook/data/personal/model/chinese_bert/bert_config.json",
-                 checkpoint_name="/home/notebook/data/personal/model/chinese_bert/bert_model.ckpt"):
+                 max_seq_len=200,
+                 graph_file="model/chinese_bert/graph",
+                 vocab_file="model/chinese_bert/vocab.txt",
+                 output_dir="model/chinese_bert/",
+                 config_name="model/chinese_bert/bert_config.json",
+                 checkpoint_name="model/chinese_bert/bert_model.ckpt"):
 
         self.max_seq_length = max_seq_len
         self.gpu_memory_fraction = 1
@@ -223,8 +235,15 @@ class BertVector:
         for (ex_index, example) in enumerate(examples):
             tokens_a = tokenizer.tokenize(example.text_a)
 
-            if len(tokens_a) > seq_length - 2:
-                tokens_a = tokens_a[0:(seq_length - 2)]
+            tokens_b = None
+            if example.text_b:
+                tokens_b = tokenizer.tokenize(example.text_b)
+
+            if tokens_b:
+                _truncate_seq_pair(tokens_a, tokens_b, seq_length - 3)
+            else:
+                if len(tokens_a) > seq_length - 2:
+                    tokens_a = tokens_a[0:(seq_length - 2)]
 
             tokens = []
             input_type_ids = []
@@ -236,13 +255,20 @@ class BertVector:
             tokens.append("[SEP]")
             input_type_ids.append(0)
 
+            if tokens_b:
+                for token in tokens_b:
+                    tokens.append(token)
+                    input_type_ids.append(1)
+                tokens.append("[SEP]")
+                input_type_ids.append(1)
+
             # Where "input_ids" are tokens's index in vocabulary
             input_ids = tokenizer.convert_tokens_to_ids(tokens)
 
             # The mask has 1 for real tokens and 0 for padding tokens. Only real
             # tokens are attended to.
             input_mask = [1] * len(input_ids)
-            input_masks.append(input_mask)
+
             # Zero-pad up to the sequence length.
             while len(input_ids) < seq_length:
                 input_ids.append(0)
@@ -266,29 +292,11 @@ class BertVector:
             line = tokenization.convert_to_unicode(ss)
             if not line:
                 continue
-            text_a = line.strip()
-            yield InputExample(unique_id=unique_id, text_a=text_a)
+            line = line.strip().split(const.SPLIT)
+            if len(line) == 1:
+                yield InputExample(unique_id=unique_id, text_a=line[0])
+            elif len(line) == 2:
+                yield InputExample(unique_id=unique_id, text_a=line[0], text_b=line[1])
+            else:
+                print(f"{line}长度不能大于2")
             unique_id += 1
-
-
-if __name__ == "__main__":
-    import time
-    import numpy as np
-    from numpy.linalg import norm
-    import pandas as pd
-
-    def cosine(x, y):
-        return abs(np.dot(x, y) / (norm(x)*norm(y)))
-
-    bert = BertVector()
-
-    question1 = "#的女主角名字叫什么"
-    question2 = "#的男主角是谁"
-    question3 = "#的女主角是谁"
-
-    q1, v1 = bert.encode([question1])
-    q2, v2 = bert.encode([question2])
-    q3, v3 = bert.encode([question3])
-
-    print(cosine(q1[0], q2[0]))
-    print(cosine(q1[0], q3[0]))

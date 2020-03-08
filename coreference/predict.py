@@ -1,5 +1,6 @@
 import copy
 import os
+import collections
 
 import tensorflow as tf
 import numpy as np
@@ -8,11 +9,36 @@ from const import *
 import common
 
 
+def post_check(contexts, rewrite_context):
+    last_context = contexts[-1]
+
+    for w in rewrite_context:
+        if last_context.find(w) == -1:
+            break
+    else:
+        return last_context
+
+    context_counts = collections.Counter("".join(contexts))
+
+    rewrite_counts = {}
+    for w in rewrite_context:
+        if w not in rewrite_counts:
+            rewrite_counts[w] = 1
+        else:
+            if rewrite_counts[w] >= context_counts[w]:
+                return last_context
+            rewrite_counts[w] += 1
+
+    return rewrite_context
+
+
 class Predict(object):
-    def __init__(self, model_path="model/", beam_size=4, rewrite_len=24):
+    def __init__(self, model_path="model/", beam_size=4, rewrite_len=100, debug=False, use_beam_serch=False):
         self.model_path = model_path
         self.beam_size = beam_size
         self.rewrite_len = rewrite_len
+        self.debug = debug
+        self.use_beam_serch = use_beam_serch
 
     def load_model(self):
         data = common.middle_load(os.path.join(self.model_path, "corpus"))
@@ -44,6 +70,8 @@ class Predict(object):
         self.enc_output = graph.get_tensor_by_name("enc_output:0")
 
         self.tgt = graph.get_tensor_by_name("init_variables/tgt_tensor:0")
+        self.tgt_postion = graph.get_tensor_by_name(
+            "init_variables/tgt_postion:0")
         self.pre_enc_output = graph.get_tensor_by_name(
             "init_variables/pre_enc_output:0")
         self.distributes = graph.get_tensor_by_name("pre_distributes:0")
@@ -124,8 +152,8 @@ class Predict(object):
         done_nums = len([s for s in seqs if s[-1]])
         return done_nums == self.beam_size, done_nums
 
-    def init_input(self):
-        return np.asarray([[BOS]]*self.beam_size)
+    def init_input(self, beam_size):
+        return np.asarray([[1]]*beam_size), np.asarray([[BOS]]*beam_size)
 
     def update_input(self, top_seqs):
         end_seqs, un_end_seqs, input_data = [], [], []
@@ -158,16 +186,40 @@ class Predict(object):
         }
         return self.session.run([self.enc_output], feed_dict)[0]
 
-    def decode(self, input_data, src_beam, enc_output_beam):
+    def decode(self, input_data, input_pos, src_beam, enc_output_beam):
         feed_dict = {
             self.tgt_max_len: input_data.shape[1],
             self.batch_size: 1,
             self.tgt: input_data,
+            self.tgt_postion: input_pos,
             self.src: src_beam,
             self.pre_enc_output: enc_output_beam,
             self.dropout_rate: 1.
         }
+
         return self.session.run([self.distributes], feed_dict)[0]
+
+    def no_beam_divine(self, sentences):
+        src, position, turns = self.preprocess(sentences)
+
+        enc_output = self.encode(src, position, turns)
+        words = [[BOS]]
+        idxs = []
+
+        for step in range(1, self.rewrite_len):
+            input_pos = np.arange(1, step+1)[np.newaxis, :]
+            input_data = np.array(words)
+            s = time.time()
+            dec_output = self.decode(input_data, input_pos, src, enc_output)
+            print(time.time()-s)
+            widx = np.argmax(dec_output[:, -1, :])
+            idx = self.widx2didx(widx)
+            if idx == EOS:
+                break
+            words[0].append(idx)
+            idxs.append(widx)
+
+        return ["".join([self.word[idx] for idx in idxs])]
 
     def divine(self, sentences):
         def length_penalty(step, len_penalty_w=1.):
@@ -181,11 +233,12 @@ class Predict(object):
         src_beam = np.tile(src, (self.beam_size, 1))
 
         enc_output_beam = np.tile(enc_output, (self.beam_size, 1, 1))
-        input_data = self.init_input()
+        input_pos, input_data = self.init_input(self.beam_size)
         end_seqs = []
 
         for step in range(1, self.rewrite_len):
-            dec_output = self.decode(input_data, src_beam, enc_output_beam)
+            dec_output = self.decode(
+                input_data, input_pos, src_beam, enc_output_beam)
             out = dec_output[:, -1, :]
             lp = length_penalty(step)
             top_seqs, all_done, un_dones = self.beam_search(
@@ -204,16 +257,14 @@ class Predict(object):
             tgts += [("".join([self.word[idx] for idx in cor_idxs]), score)]
         return tgts
 
-    def Trains(self, sentences, topk=4):
-        answers = self.divine(sentences)
-        return [ans[0] for ans in answers[:topk]]
+    def Trains(self, sentences):
+        if self.use_beam_serch:
+            answers = self.divine(sentences)
+            answer = answers[0][0]
+        else:
+            answers = self.no_beam_divine(sentences)
+            answer = answers[0]
+        if self.debug:
+            print(answers)
 
-
-if __name__ == "__main__":
-    import time
-    pre = Predict("weights")
-    t1 = "北京今天天气怎么样"
-    t2 = "晴天"
-    t3 = "那明天呢"
-    pre.load_model()
-    print(f"{t1}, {t2}, {t3} - {pre.Trains([t1,t2,t3])[0]}")
+        return post_check(sentences, answer)

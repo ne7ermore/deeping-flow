@@ -5,7 +5,7 @@ import const
 
 
 class DataLoader(object):
-    def __init__(self, src_texts, src_turn, tgt_indexs, tgt_texts, eos_indexs, src_context, batch_size):
+    def __init__(self, src_texts, src_turn, tgt_indexs, tgt_texts, eos_indexs, src_context, tgt_context, batch_size):
         self.sents_size = len(src_texts)
         self._step = 0
         self.stop_step = self.sents_size // batch_size
@@ -16,6 +16,7 @@ class DataLoader(object):
         self.tgt_texts = tgt_texts
         self.eos_indexs = eos_indexs
         self.src_context = src_context
+        self.tgt_context = tgt_context
 
     def __iter__(self):
         return self
@@ -31,8 +32,8 @@ class DataLoader(object):
             return inst_data, inst_position, max_len
 
         def index_pairs(t_indexs, tgt_len):
-            indexs = np.array([inst.tolist() + [const.PAD] *
-                               (tgt_len - len(inst)) for inst in t_indexs])
+            indexs = np.array([inst.tolist() + [const.PAD]
+                               * (tgt_len - len(inst)) for inst in t_indexs])
             return indexs
 
         if self._step == self.stop_step:
@@ -52,37 +53,6 @@ class DataLoader(object):
         turns_tensor = self.src_turn[_start:_start+_bsz]
         eos_indexs = self.eos_indexs[_start:_start+_bsz]
         src_context = self.src_context[_start:_start+_bsz]
+        tgt_context = self.tgt_context[_start:_start+_bsz]
 
-        return (src_tensor, src_postion, turns_tensor), (tgt_tensor, tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context
-
-
-if __name__ == "__main__":
-    import common
-
-    corpus = common.middle_load("data/corpus")
-    dl = DataLoader(corpus["train"]["src_texts"],
-                    corpus["train"]["src_turn"],
-                    corpus["train"]["tgt_indexs"],
-                    corpus["train"]["tgt_texts"],
-                    corpus["train"]["eos_indexs"],
-                    corpus["train"]["src_context"],
-                    4)
-    (src_tensor, src_postion, turns_tensor), (tgt_tensor,
-                                              tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context = next(dl)
-
-    print(tgt_max_len)
-    print(tgt_indexs_tensor.tolist())
-
-    ei = eos_indexs[0]
-    tgt_ei = tgt_indexs_tensor[0] == 0
-    print(tgt_ei)
-
-    print(src_context)
-    idx2word = {v: k for k, v in corpus["word2idx"].items()}
-
-    for src in src_tensor:
-        print("".join(idx2word[idx] for idx in src))
-    for tgt in tgt_tensor:
-        print("".join(idx2word[idx] for idx in tgt))
-    for index, tgt in enumerate(tgt_indexs_tensor):
-        print("".join(idx2word[src_tensor[index][idx]] for idx in tgt))
+        return (src_tensor, src_postion, turns_tensor), (tgt_tensor, tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context, tgt_context
