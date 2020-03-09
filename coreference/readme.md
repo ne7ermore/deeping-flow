@@ -14,12 +14,11 @@
 
 ## Distillation
 
-mkdir bert_dir which download Base Bert weights into
+mkdir "chinese_bert" and download Base Bert weights into it
 
 ## Train Data
 
 If want train data, please contact me
-
 
 ## Quality of Sentence ReWriting
 
