@@ -95,9 +95,7 @@ class Corpus(object):
                     # 保存
                     # step 1 - 替换后的q
                     src_contexts.append("".join(replaced_qs))
-                    replaced_qs += [WORD[PAD]] * \
-                        (self.max_len-len(replaced_qs))
-                    turns += [PAD] * (self.max_len-len(turns))
+
                     assert len(replaced_qs) == len(turns)
                     src_texts.append(replaced_qs)
                     src_turn.append(turns)

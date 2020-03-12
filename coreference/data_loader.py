@@ -50,9 +50,30 @@ class DataLoader(object):
             self.tgt_texts[_start:_start+_bsz])
         tgt_indexs_tensor = index_pairs(
             self.tgt_indexs[_start:_start+_bsz], tgt_max_len)
-        turns_tensor = self.src_turn[_start:_start+_bsz]
+        turns_tensor, _, _ = pad_to_longest(self.src_turn[_start:_start+_bsz])
         eos_indexs = self.eos_indexs[_start:_start+_bsz]
         src_context = self.src_context[_start:_start+_bsz]
         tgt_context = self.tgt_context[_start:_start+_bsz]
 
         return (src_tensor, src_postion, turns_tensor), (tgt_tensor, tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context, tgt_context
+
+
+if __name__ == "__main__":
+    from common import middle_load, middle_save, set_logger
+
+    data = middle_load("data/corpus")
+
+    training_data = DataLoader(
+        data["train"]["src_texts"],
+        data["train"]["src_turn"],
+        data["train"]["tgt_indexs"],
+        data["train"]["tgt_texts"],
+        data["train"]["eos_indexs"],
+        data["train"]["src_context"],
+        data["train"]["tgt_context"],
+        batch_size=8)
+
+    (src_tensor, src_postion, turns_tensor), (tgt_tensor,
+                                              tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context, tgt_context = next(training_data)
+
+    print(turns_tensor.shape)

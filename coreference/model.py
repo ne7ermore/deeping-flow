@@ -253,19 +253,19 @@ class Transformer:
 
         return tf.reduce_sum(loss * nonpadding) / (tf.reduce_sum(nonpadding) + 1e-9)
 
-    def bert_vecs(self, src_context, tgt_context, bert, tgt_max_len):
+    def bert_vecs(self, src_context, tgt_context, bert, src_max_len, tgt_max_len):
         src_tgt_context = np.asarray(
             [f"{t}{const.SPLIT}{s}" for s, t in zip(src_context, tgt_context)])
         _, dec_vecs = bert.encode(src_tgt_context)
         _, enc_vecs = bert.encode(src_context)
 
-        return enc_vecs, dec_vecs[:, :tgt_max_len]
+        return enc_vecs[:, :src_max_len], dec_vecs[:, :tgt_max_len]
 
     def pre_train(self, training_data, sess, bert, batch_size):
         total_loss = 0
         for (src_tensor, src_postion, turns_tensor), (tgt_tensor, tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context, tgt_context in training_data:
             enc_vecs, dec_vecs = self.bert_vecs(
-                src_context, tgt_context, bert, tgt_max_len)
+                src_context, tgt_context, bert, src_max_len, tgt_max_len)
 
             feed_dict = {
                 self.src_max_len: src_max_len,
@@ -293,7 +293,7 @@ class Transformer:
         total_loss = total_correct = total_gold = rouge_scores = 0
         for (src_tensor, src_postion, turns_tensor), (tgt_tensor, tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context, tgt_context in training_data:
             enc_vecs, dec_vecs = self.bert_vecs(
-                src_context, tgt_context, bert, tgt_max_len)
+                src_context, tgt_context, bert, src_max_len, tgt_max_len)
 
             feed_dict = {
                 self.src_max_len: src_max_len,
@@ -334,7 +334,7 @@ class Transformer:
         total_loss = total_correct = total_gold = rouge_scores = 0
         for (src_tensor, src_postion, turns_tensor), (tgt_tensor, tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context, tgt_context in validation_data:
             enc_vecs, dec_vecs = self.bert_vecs(
-                src_context, tgt_context, bert, tgt_max_len)
+                src_context, tgt_context, bert, src_max_len, tgt_max_len)
 
             feed_dict = {
                 self.src_tensor: src_tensor,
@@ -375,7 +375,7 @@ class Transformer:
         (src_tensor, src_postion, turns_tensor), (tgt_tensor,
                                                   tgt_postion), tgt_indexs_tensor, src_max_len, eos_indexs, tgt_max_len, src_context, tgt_context = next(training_data)
         enc_vecs, dec_vecs = self.bert_vecs(
-            src_context, tgt_context, bert, tgt_max_len)
+            src_context, tgt_context, bert, src_max_len, tgt_max_len)
 
         feed_dict = {
             self.src_max_len: src_max_len,
