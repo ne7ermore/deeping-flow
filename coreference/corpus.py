@@ -10,9 +10,10 @@ class Dictionary(object):
             WORD[BOS]: BOS,
             WORD[EOS]: EOS,
             WORD[PAD]: PAD,
-            WORD[UNK]: UNK
+            WORD[UNK]: UNK,
+            WORD[UNC]: UNC,
         }
-        self.idx = 4
+        self.idx = len(self.word2idx)
 
     def add(self, word):
         if self.word2idx.get(word) is None:
