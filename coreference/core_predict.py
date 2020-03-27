@@ -32,51 +32,67 @@ def post_check(contexts, rewrite_context):
     return rewrite_context
 
 
-class Predict(object):
+class GraphSession(object):
+    def __init__(self, graph_path):
+        with tf.Graph().as_default():
+            output_graph_def = tf.GraphDef()
+
+            with open(graph_path, "rb") as f:
+                output_graph_def.ParseFromString(f.read())
+                _ = tf.import_graph_def(output_graph_def, name="")
+
+            config = tf.ConfigProto()
+            config.gpu_options.allow_growth = True
+            sess = tf.Session(config=config)
+            init = tf.global_variables_initializer()
+            sess.run(init)
+
+            self._session = sess
+
+    @property
+    def session(self):
+        return self._session
+
+
+class CorePredict(object):
     def __init__(self, model_path="model/", beam_size=4, rewrite_len=100, debug=False, use_beam_serch=False):
         self.model_path = model_path
         self.beam_size = beam_size
         self.rewrite_len = rewrite_len
         self.debug = debug
         self.use_beam_serch = use_beam_serch
+        sess = GraphSession(f"{model_path}\graph").session
+
+        self.src_max_len = sess.graph.get_tensor_by_name(
+            "init_variables/src_max_len:0")
+        self.batch_size = sess.graph.get_tensor_by_name(
+            "init_variables/batch_size:0")
+        self.tgt_max_len = sess.graph.get_tensor_by_name(
+            "init_variables/tgt_max_len:0")
+
+        self.src = sess.graph.get_tensor_by_name("init_variables/src_tensor:0")
+        self.postion = sess.graph.get_tensor_by_name(
+            "init_variables/src_postion:0")
+        self.turns = sess.graph.get_tensor_by_name(
+            "init_variables/turns_tensor:0")
+        self.dropout_rate = sess.graph.get_tensor_by_name(
+            "init_variables/dropout_keep_prob:0")
+        self.enc_output = sess.graph.get_tensor_by_name("enc_output:0")
+
+        self.tgt = sess.graph.get_tensor_by_name("init_variables/tgt_tensor:0")
+        self.tgt_postion = sess.graph.get_tensor_by_name(
+            "init_variables/tgt_postion:0")
+        self.pre_enc_output = sess.graph.get_tensor_by_name(
+            "init_variables/pre_enc_output:0")
+        self.distributes = sess.graph.get_tensor_by_name("pre_distributes:0")
+
+        self.session = sess
 
     def load_model(self):
         data = common.middle_load(os.path.join(self.model_path, "corpus"))
         self.dict = data["word2idx"]
         self.turn_size = data["turn_size"]
         self.max_context_len = data["max_context_len"]
-
-        tf.reset_default_graph()
-        config = tf.ConfigProto()
-        config.gpu_options.allow_growth = True
-        sess = tf.Session(config=config)
-        saver = tf.train.import_meta_graph(
-            os.path.join(self.model_path, "model.meta"))
-        saver.restore(sess, tf.train.latest_checkpoint(self.model_path))
-        graph = tf.get_default_graph()
-
-        self.src_max_len = graph.get_tensor_by_name(
-            "init_variables/src_max_len:0")
-        self.batch_size = graph.get_tensor_by_name(
-            "init_variables/batch_size:0")
-        self.tgt_max_len = graph.get_tensor_by_name(
-            "init_variables/tgt_max_len:0")
-
-        self.src = graph.get_tensor_by_name("init_variables/src_tensor:0")
-        self.postion = graph.get_tensor_by_name("init_variables/src_postion:0")
-        self.turns = graph.get_tensor_by_name("init_variables/turns_tensor:0")
-        self.dropout_rate = graph.get_tensor_by_name(
-            "init_variables/dropout_keep_prob:0")
-        self.enc_output = graph.get_tensor_by_name("enc_output:0")
-
-        self.tgt = graph.get_tensor_by_name("init_variables/tgt_tensor:0")
-        self.tgt_postion = graph.get_tensor_by_name(
-            "init_variables/tgt_postion:0")
-        self.pre_enc_output = graph.get_tensor_by_name(
-            "init_variables/pre_enc_output:0")
-        self.distributes = graph.get_tensor_by_name("pre_distributes:0")
-
-        self.session = sess
 
     def preprocess(self, sentences):
         assert isinstance(sentences, list)
@@ -209,9 +225,7 @@ class Predict(object):
         for step in range(1, self.rewrite_len):
             input_pos = np.arange(1, step+1)[np.newaxis, :]
             input_data = np.array(words)
-            s = time.time()
             dec_output = self.decode(input_data, input_pos, src, enc_output)
-            print(time.time()-s)
             widx = np.argmax(dec_output[:, -1, :])
             idx = self.widx2didx(widx)
             if idx == EOS:
