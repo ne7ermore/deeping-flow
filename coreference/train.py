@@ -108,6 +108,7 @@ with sv.managed_session(config=config) as sess:
             "word2idx": data["word2idx"],
             "max_context_len": data["max_len"],
             "turn_size": args.turn_size,
+            "args": args.__dict__
         }
         middle_save(
             save_data, f"{args.model_path}_{args.tag}_{args.cuda_device}/corpus")
