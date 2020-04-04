@@ -110,8 +110,9 @@ class Transformer:
             enc_output += tf.nn.embedding_lookup(
                 self.pos_embedding, src_postion)
 
-            enc_output += tf.nn.embedding_lookup(
+            turn_enc_output = tf.nn.embedding_lookup(
                 self.turn_embedding, turns_tensor)
+            enc_output += turn_enc_output*(args.d_model**0.5)
 
             enc_output = tf.nn.dropout(enc_output, keep_prob=self.dropout_rate)
 
