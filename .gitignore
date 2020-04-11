@@ -13,5 +13,4 @@ jay
 */.DS_Store
 DS_Store
 .vscode
-coreference/data/corpus
-coreference/data/data
+coreference
